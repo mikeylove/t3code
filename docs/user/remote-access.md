@@ -148,13 +148,17 @@ For Antigravity's Google callback on a remote host, see
 You can share one thread with another person without giving them your whole
 environment. Open the thread's menu, from its title in the chat header or by
 right-clicking it in the sidebar, and choose **Invite…**. Enter the name they
-should appear as, then send them the link or let them scan the QR code.
+should appear as and how long the link stays valid, then send them the link or let them
+scan the QR code. A link is single use: once it has been opened it cannot be used again,
+so it is safe to paste into a chat.
 
 An invited person can read and reply in that thread, answer the agent's
 questions, and approve its requests. They cannot see your other threads,
-projects, files, terminals, or settings. Messages from each participant are
-labeled with their name once a second person joins, and the agent sees who said
-what.
+projects, files, terminals, or settings. Their web app opens straight into the
+thread and shows only what they can use: the conversation, the composer, the
+changes each turn made, and appearance options. Everything else, including any
+other page they try to open, leads back to that thread. Messages from each participant are labeled with
+their name once a second person joins, and the agent sees who said what.
 
 Invites appear under **Settings → Connections** marked as thread invites, and
 their sessions as thread guests. Revoke one there like any other device. On a

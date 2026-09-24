@@ -4,15 +4,17 @@ import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime"
 import {
   Outlet,
   Link,
+  Navigate,
   redirect,
   createRootRoute,
   type ErrorComponentProps,
   useLocation,
   useNavigate,
+  useParams,
   useRouter,
 } from "@tanstack/react-router";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL, APP_VERSION } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
@@ -35,6 +37,7 @@ import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { useDefaultThemeAdoption } from "../hooks/useDefaultTheme";
 import { useEnvironmentThemeSync } from "../hooks/useEnvironmentTheme";
+import { useThreadGuestScope } from "../hooks/useThreadGuest";
 import { Button } from "../components/ui/button";
 import { StandalonePage, StandalonePageHeader } from "../components/ui/standalone-page";
 import {
@@ -69,6 +72,7 @@ import {
   primaryServerWelcomeAtom,
 } from "../state/server";
 import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
+import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
@@ -132,10 +136,35 @@ function RootRouteNotFoundView() {
   );
 }
 
+/**
+ * A thread guest has one thread and nowhere else to go. Every page but that
+ * thread (settings, usage, pull requests, drafts, welcome, another thread)
+ * sends them back to it; the index route handles "/" itself.
+ */
+function ThreadGuestRouteGuard({ children }: { readonly children: ReactNode }) {
+  const { isGuest, threadRef } = useThreadGuestScope();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const routeThreadRef = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteRef(params),
+  });
+  if (!isGuest || threadRef === null || pathname === "/") return children;
+  if (
+    routeThreadRef?.environmentId === threadRef.environmentId &&
+    routeThreadRef.threadId === threadRef.threadId
+  ) {
+    return children;
+  }
+  return (
+    <Navigate to="/$environmentId/$threadId" params={buildThreadRouteParams(threadRef)} replace />
+  );
+}
+
 function RootRouteView() {
   useEffect(() => installDesktopPasteAsText(window.desktopBridge, window), []);
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
+  const { isGuest } = useThreadGuestScope();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
   const returningFromWelcomeRef = useRef(pathname === "/welcome");
 
@@ -178,7 +207,9 @@ function RootRouteView() {
           <ThreadInviteDialogHost />
           <CommandPalette>
             <AppSidebarLayout>
-              <Outlet />
+              <ThreadGuestRouteGuard>
+                <Outlet />
+              </ThreadGuestRouteGuard>
             </AppSidebarLayout>
           </CommandPalette>
         </AnchoredToastProvider>
@@ -198,7 +229,9 @@ function RootRouteView() {
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>
-        <Outlet />
+        <ThreadGuestRouteGuard>
+          <Outlet />
+        </ThreadGuestRouteGuard>
       </AppSidebarLayout>
     </CommandPalette>
   );
@@ -230,13 +263,16 @@ function RootRouteView() {
           <CustomSnoozeDialogHost />
           <ThreadInviteDialogHost />
           <SlowRpcRequestToastCoordinator />
-          <ProjectCloneToastCoordinator />
+          {/* Clone progress and provider updates subscribe to owner-only RPCs. */}
+          {isGuest ? null : <ProjectCloneToastCoordinator />}
           <HostedStaticEnvironmentBootstrap />
           {primaryEnvironmentAuthenticated ? (
             <EventRouter skipInitialBootstrapNavigation={returningFromWelcomeRef.current} />
           ) : null}
           {primaryEnvironmentAuthenticated ? <PlanAgentSelectionHeal /> : null}
-          {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
+          {primaryEnvironmentAuthenticated && !isGuest ? (
+            <ProviderUpdateLaunchNotification />
+          ) : null}
           {appShell}
           {/* Above the router: a theme draft is judged by walking the app, so the
               editor has to survive navigation away from settings. */}

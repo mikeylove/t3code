@@ -96,6 +96,7 @@ export function HomeHeader(props: HomeHeaderProps) {
     <>
       <NativeStackScreenOptions options={{ headerShown: false }} />
       <MaterialThreadListToolbar
+        searchHidden={props.guestOnly}
         searchQuery={props.searchQuery}
         onSearchQueryChange={props.onSearchQueryChange}
         filterActions={menuActions}

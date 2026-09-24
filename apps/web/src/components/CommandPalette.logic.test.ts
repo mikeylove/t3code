@@ -8,6 +8,7 @@ import {
   buildThreadActionItems,
   buildLinkedThreadActionItems,
   enumerateCommandPaletteItems,
+  filterCommandPaletteActionItemsForThreadGuest,
   filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   reduceCommandPaletteUiState,
@@ -848,6 +849,37 @@ describe("filterCommandPaletteGroups", () => {
     expect(group?.items.map((entry) => entry.value)).toEqual([
       "setting:default-model",
       "setting:keybinding-modelPicker.toggle",
+    ]);
+  });
+});
+
+describe("filterCommandPaletteActionItemsForThreadGuest", () => {
+  it("keeps only appearance and copy actions, in their original order", () => {
+    const values = [
+      "action:new-thread",
+      "action:new-thread-in",
+      "action:copy-thread-reference",
+      "action:link-pull-request",
+      "action:open-file-picker",
+      "action:search-project-contents",
+      "action:add-project",
+      "action:change-theme",
+      "action:change-appearance",
+      "action:theme-editor",
+      "action:pull-requests",
+      "action:usage",
+      "action:settings",
+      "action:project-settings",
+    ];
+    expect(
+      filterCommandPaletteActionItemsForThreadGuest(values.map((value) => ({ value }))).map(
+        (item) => item.value,
+      ),
+    ).toEqual([
+      "action:copy-thread-reference",
+      "action:change-theme",
+      "action:change-appearance",
+      "action:theme-editor",
     ]);
   });
 });

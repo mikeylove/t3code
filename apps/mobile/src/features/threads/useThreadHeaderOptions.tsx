@@ -1,4 +1,5 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useMemo } from "react";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
@@ -17,12 +18,33 @@ export function useThreadHeaderOptions(props: {
   readonly headerColor: string;
   readonly usesNativeHeaderGlass: boolean;
   readonly gitControls: Parameters<typeof ThreadGitControls>[0];
+  /** Thread guest: conversation plus read-only turn diffs, so no git, terminal, file, or new-task items. */
+  readonly guest: boolean;
   readonly onReturnToThread?: () => void;
 }) {
   const navigation = useNavigation();
   const { layout, panes, togglePrimarySidebar } = useAdaptiveWorkspaceLayout();
   const threadCenterHeaderItems = useThreadGitCenterHeaderItems(props.gitControls);
   const compactRightHeaderItems = useThreadGitRightHeaderItems(props.gitControls);
+  // Owners reach the review sheet through the git menu; a guest has no git
+  // menu, so the sheet gets its own button.
+  const { environmentId, threadId } = props.gitControls;
+  const guestRightHeaderItems = useMemo<NativeHeaderItems>(
+    () => [
+      withNativeGlassHeaderItem({
+        accessibilityLabel: "Review changes",
+        icon: { name: "text.bubble", type: "sfSymbol" as const },
+        identifier: "thread-right-review",
+        onPress: () =>
+          navigation.navigate("ThreadReview", {
+            environmentId: EnvironmentId.make(String(environmentId)),
+            threadId: ThreadId.make(String(threadId)),
+          }),
+        type: "button" as const,
+      }),
+    ],
+    [environmentId, navigation, threadId],
+  );
   const splitLeftHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       {
@@ -54,15 +76,25 @@ export function useThreadHeaderOptions(props: {
         onPress: togglePrimarySidebar,
         type: "button" as const,
       }),
-      withNativeGlassHeaderItem({
-        accessibilityLabel: "New task",
-        icon: { name: "square.and.pencil", type: "sfSymbol" as const },
-        identifier: "thread-left-new-task",
-        onPress: () => navigation.navigate("NewTaskSheet", { screen: "NewTask" }),
-        type: "button" as const,
-      }),
+      ...(props.guest
+        ? []
+        : [
+            withNativeGlassHeaderItem({
+              accessibilityLabel: "New task",
+              icon: { name: "square.and.pencil", type: "sfSymbol" as const },
+              identifier: "thread-left-new-task",
+              onPress: () => navigation.navigate("NewTaskSheet", { screen: "NewTask" }),
+              type: "button" as const,
+            }),
+          ]),
     ],
-    [panes.primarySidebarVisible, props.onReturnToThread, navigation, togglePrimarySidebar],
+    [
+      panes.primarySidebarVisible,
+      props.guest,
+      props.onReturnToThread,
+      navigation,
+      togglePrimarySidebar,
+    ],
   );
   // Deep links / cold starts land with Thread as the ONLY route, where the
   // native back button does not render. Provide an explicit Home escape for
@@ -104,7 +136,11 @@ export function useThreadHeaderOptions(props: {
     // the git controls on the RIGHT (no center items — center space is
     // reserved for future breadcrumbs/status).
     unstable_headerRightItems: () =>
-      layout.usesSplitView ? threadCenterHeaderItems : compactRightHeaderItems,
+      props.guest
+        ? guestRightHeaderItems
+        : layout.usesSplitView
+          ? threadCenterHeaderItems
+          : compactRightHeaderItems,
     unstable_headerSubtitle: props.usesNativeHeaderGlass ? props.subtitle : undefined,
     contentStyle: undefined,
   };
@@ -112,7 +148,7 @@ export function useThreadHeaderOptions(props: {
     options,
     sidebar: false,
     fallback:
-      !layout.usesSplitView && !props.usesNativeHeaderGlass ? (
+      !props.guest && !layout.usesSplitView && !props.usesNativeHeaderGlass ? (
         <ThreadGitControls {...props.gitControls} showActionControls />
       ) : null,
   };

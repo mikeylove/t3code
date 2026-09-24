@@ -13,6 +13,7 @@ import { selectProjectGroupingSettings } from "../logicalProject";
 import { buildSidebarProjectSnapshots } from "../sidebarProjectGrouping";
 import { dispatchPreviewAction } from "../components/preview/previewActionBus";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useThreadGuestScope } from "../hooks/useThreadGuest";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
@@ -34,6 +35,7 @@ function ChatRouteGlobalShortcuts() {
     useHandleNewThread();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const legacySidebarEnabled = useLegacySidebarEnabled();
+  const { isGuest } = useThreadGuestScope();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -92,6 +94,9 @@ function ChatRouteGlobalShortcuts() {
         clearSelection();
         return;
       }
+
+      // A thread guest cannot create threads; the shortcut simply does nothing.
+      if (isGuest && (command === "chat.new" || command === "chat.newLocal")) return;
 
       if (command === "chat.newLocal") {
         event.preventDefault();
@@ -179,6 +184,7 @@ function ChatRouteGlobalShortcuts() {
     handleNewThread,
     keybindings,
     defaultProjectRef,
+    isGuest,
     previewOpen,
     projectGroupCount,
     routeThreadRef,

@@ -562,3 +562,21 @@ export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): str
       return "Enter path (e.g. ~/projects/my-app)";
   }
 }
+
+/**
+ * Palette actions a thread guest may still run. Everything else creates,
+ * navigates away from their one thread, or reaches an RPC the server denies
+ * guests, so an allowlist keeps new owner-only actions hidden by default.
+ */
+export const THREAD_GUEST_COMMAND_PALETTE_ACTIONS: ReadonlySet<string> = new Set([
+  "action:copy-thread-reference",
+  "action:change-theme",
+  "action:change-appearance",
+  "action:theme-editor",
+]);
+
+export function filterCommandPaletteActionItemsForThreadGuest<
+  TItem extends { readonly value: string },
+>(items: ReadonlyArray<TItem>): TItem[] {
+  return items.filter((item) => THREAD_GUEST_COMMAND_PALETTE_ACTIONS.has(item.value));
+}

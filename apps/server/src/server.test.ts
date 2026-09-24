@@ -4345,7 +4345,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](
               turnStart(defaultThreadId, "own"),
             );
-            assert.deepEqual(dispatched, [`thread.turn.start:${defaultThreadId}`]);
+            // The guest's first connection announced their arrival to the thread.
+            assert.deepEqual(dispatched, [
+              `thread.activity.append:${defaultThreadId}`,
+              `thread.turn.start:${defaultThreadId}`,
+            ]);
 
             // The shell shows the invited thread and its project, nothing else.
             const first = yield* client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(

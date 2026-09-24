@@ -1,5 +1,6 @@
 import {
   AuthAccessWriteScope,
+  MAX_PAIRING_CREDENTIAL_TTL_MINUTES,
   type AdvertisedEndpoint,
   type AuthEnvironmentScope,
 } from "@t3tools/contracts";
@@ -25,6 +26,34 @@ export function canCreateThreadInvite(input: {
 }): boolean {
   if (input.localEnvironmentDisabled || !input.isPrimaryEnvironment) return false;
   return input.isDesktopBridge || (input.sessionScopes?.includes(AuthAccessWriteScope) ?? false);
+}
+
+/**
+ * How long an invite link stays redeemable. The server default (5 minutes)
+ * suits a QR scanned across a desk; a link pasted into chat needs longer.
+ */
+export const THREAD_INVITE_TTL_OPTIONS = ["1h", "24h", "7d"] as const;
+export type ThreadInviteTtlOption = (typeof THREAD_INVITE_TTL_OPTIONS)[number];
+export const DEFAULT_THREAD_INVITE_TTL: ThreadInviteTtlOption = "24h";
+export const THREAD_INVITE_TTL_LABELS: Record<ThreadInviteTtlOption, string> = {
+  "1h": "1 hour",
+  "24h": "24 hours",
+  "7d": "7 days",
+};
+
+const THREAD_INVITE_TTL_MINUTES: Record<ThreadInviteTtlOption, number> = {
+  "1h": 60,
+  "24h": 24 * 60,
+  "7d": 7 * 24 * 60,
+};
+
+export function isThreadInviteTtlOption(value: string): value is ThreadInviteTtlOption {
+  return (THREAD_INVITE_TTL_OPTIONS as ReadonlyArray<string>).includes(value);
+}
+
+/** The `ttlMinutes` to send for a lifetime choice, clamped to what the server accepts. */
+export function threadInviteTtlMinutes(option: ThreadInviteTtlOption): number {
+  return Math.min(THREAD_INVITE_TTL_MINUTES[option], MAX_PAIRING_CREDENTIAL_TTL_MINUTES);
 }
 
 export interface ThreadInviteLink {

@@ -5,7 +5,9 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useCallback, useMemo, useState } from "react";
 
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
+import { excludeGuestEnvironments } from "../home/home-guest-mode";
 import { useArchivedThreadListActions } from "../home/useThreadListActions";
+import { useGuestThreadIds } from "../../state/thread-guest";
 import {
   ArchivedThreadsScreen,
   type ArchivedThreadsHeaderEnvironment,
@@ -34,9 +36,15 @@ export function ArchivedThreadsRouteScreen() {
       ),
     [savedConnectionsById],
   );
+  const guestThreadIds = useGuestThreadIds();
+  // Archived snapshots are refused to thread guests; leave their environments out of the fetch.
   const environmentIds = useMemo(
-    () => environments.map((environment) => environment.environmentId),
-    [environments],
+    () =>
+      excludeGuestEnvironments(
+        environments.map((environment) => environment.environmentId),
+        guestThreadIds,
+      ),
+    [environments, guestThreadIds],
   );
   const environmentLabels = useMemo(
     () =>

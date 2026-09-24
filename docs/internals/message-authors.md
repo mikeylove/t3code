@@ -70,9 +70,23 @@ Enforcement has one chokepoint and a short list of per-handler gates:
 - The HTTP orchestration snapshot, shell, and dispatch routes and the pull request diff route
   refuse guests; the per-thread snapshot route answers only for the invited thread.
 
+A guest's first ever WebSocket connection appends a `participant.joined` activity to the thread
+("Clay joined the thread", tone `info`, no turn) so everyone sees the arrival. Reconnects are
+silent: the announcement keys off the session row's `lastConnectedAt` being empty, and it never
+reaches the model, which learns who is present from the first prefixed message.
+
 What a guest cannot do is deliberately broad: no lifecycle or mode changes, no files, terminals,
 git, previews, devices, settings, other threads, or access management. Loosening any of that is a
 one-line change in the table plus a gate, and should be a conscious one.
+
+The web client mirrors the table as **guest mode**. `useThreadGuestScope()`
+(`apps/web/src/hooks/useThreadGuest.ts`) reads the guest's thread off the primary session state;
+every owner-only surface hides behind its `isGuest`, and `ThreadGuestRouteGuard` in the root route
+sends any other page back to the guest's thread. Hide, never disable: a disabled owner control on a
+guest's screen is a lie about what the server would allow. Diffs are the one panel a guest keeps:
+turn and full-thread diffs are thread reads, so the diff panel (web) and review sheet (mobile) stay,
+pinned to turn scope, while the working-tree and branch scopes that need `review.getDiffPreview`
+disappear with the rest of the git surface.
 
 ## Not yet built
 

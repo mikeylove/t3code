@@ -112,6 +112,8 @@ import type { ThreadContentPresentation } from "./threadContentPresentation";
 import { resolveThreadFeedSubmissionAnchor } from "./thread-feed-live-follow";
 
 export interface ThreadDetailScreenProps {
+  /** Thread guest: send, steer, approve, and pick a model; no mode, file, or PR tooling. */
+  readonly guest?: boolean;
   readonly worktreeSetup?: WorktreeSetupCardProps | null;
   readonly setupWorkingStartedAt?: string | null;
   readonly selectedThread: OrchestrationThreadShell;
@@ -1078,6 +1080,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
                   serverConfig={props.serverConfig}
                   queueCount={props.selectedThreadQueueCount}
                   environmentId={props.environmentId}
+                  guest={props.guest === true}
                   projectCwd={props.threadCwd ?? props.projectWorkspaceRoot}
                   // Follow-ups typed during setup wait in the draft: queueing
                   // them against a thread id the server may still reject

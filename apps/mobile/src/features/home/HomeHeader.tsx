@@ -48,45 +48,47 @@ export function HomeHeader(props: HomeHeaderProps) {
           ],
           // The keys below are set per-branch (not `undefined`) so a later
           // reapply cannot clobber options owned by NativeHeaderToolbar.
-          ...(NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED
-            ? {
-                unstable_headerToolbarItems: () => [
-                  createNativeMailSearchToolbarItem({
-                    composeButtonId: "home-new-task",
-                    composeSystemImageName: "square.and.pencil",
-                    filterMenu,
-                    filterButtonId: "home-filter",
-                    filterSystemImageName: hasCustomListOptions
-                      ? "line.3.horizontal.decrease.circle.fill"
-                      : "line.3.horizontal.decrease",
-                    onComposePress: props.onStartNewTask,
-                    onSearchTextChange: props.onSearchQueryChange,
+          ...(props.guestOnly
+            ? { headerSearchBarOptions: undefined, unstable_headerToolbarItems: () => [] }
+            : NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED
+              ? {
+                  unstable_headerToolbarItems: () => [
+                    createNativeMailSearchToolbarItem({
+                      composeButtonId: "home-new-task",
+                      composeSystemImageName: "square.and.pencil",
+                      filterMenu,
+                      filterButtonId: "home-filter",
+                      filterSystemImageName: hasCustomListOptions
+                        ? "line.3.horizontal.decrease.circle.fill"
+                        : "line.3.horizontal.decrease",
+                      onComposePress: props.onStartNewTask,
+                      onSearchTextChange: props.onSearchQueryChange,
+                      placeholder: "Search",
+                      searchTextChangeId: "home-search-text",
+                      showsSearchDismissButton: true,
+                    }),
+                  ],
+                }
+              : {
+                  // Pre-Liquid-Glass iOS: standard pull-down search in the nav
+                  // bar; create + sort live in the plain bottom toolbar below.
+                  headerSearchBarOptions: {
+                    ref: searchBarRef,
+                    autoCapitalize: "none" as const,
+                    hideNavigationBar: false,
                     placeholder: "Search",
-                    searchTextChangeId: "home-search-text",
-                    showsSearchDismissButton: true,
-                  }),
-                ],
-              }
-            : {
-                // Pre-Liquid-Glass iOS: standard pull-down search in the nav
-                // bar; create + sort live in the plain bottom toolbar below.
-                headerSearchBarOptions: {
-                  ref: searchBarRef,
-                  autoCapitalize: "none" as const,
-                  hideNavigationBar: false,
-                  placeholder: "Search",
-                  onCancelButtonPress: () => {
-                    props.onSearchQueryChange("");
+                    onCancelButtonPress: () => {
+                      props.onSearchQueryChange("");
+                    },
+                    onChangeText: (event) => {
+                      props.onSearchQueryChange(event.nativeEvent.text);
+                    },
                   },
-                  onChangeText: (event) => {
-                    props.onSearchQueryChange(event.nativeEvent.text);
-                  },
-                },
-              }),
+                }),
         }}
       />
 
-      {NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED ? null : (
+      {NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED || props.guestOnly ? null : (
         <NativeHeaderToolbar placement="bottom">
           <NativeHeaderToolbar.Menu
             accessibilityLabel="Filter threads"

@@ -1,8 +1,19 @@
 import type { AdvertisedEndpoint } from "@t3tools/contracts";
-import { AuthAdministrativeScopes, AuthStandardClientScopes } from "@t3tools/contracts";
+import {
+  AuthAdministrativeScopes,
+  AuthStandardClientScopes,
+  MAX_PAIRING_CREDENTIAL_TTL_MINUTES,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { canCreateThreadInvite, resolveThreadInviteLink } from "./ThreadInviteDialog.logic";
+import {
+  canCreateThreadInvite,
+  DEFAULT_THREAD_INVITE_TTL,
+  isThreadInviteTtlOption,
+  resolveThreadInviteLink,
+  THREAD_INVITE_TTL_OPTIONS,
+  threadInviteTtlMinutes,
+} from "./ThreadInviteDialog.logic";
 
 const lanEndpoint: AdvertisedEndpoint = {
   id: "desktop-lan:1",
@@ -78,5 +89,28 @@ describe("resolveThreadInviteLink", () => {
       currentHref: "http://mac.tailnet.ts.net:3000/",
     });
     expect(link.qrShareable).toBe(true);
+  });
+});
+
+describe("threadInviteTtlMinutes", () => {
+  it("maps each lifetime choice to whole minutes", () => {
+    expect(threadInviteTtlMinutes("1h")).toBe(60);
+    expect(threadInviteTtlMinutes("24h")).toBe(1440);
+    expect(threadInviteTtlMinutes("7d")).toBe(10080);
+  });
+
+  it("never exceeds the server maximum", () => {
+    for (const option of THREAD_INVITE_TTL_OPTIONS) {
+      const minutes = threadInviteTtlMinutes(option);
+      expect(Number.isInteger(minutes)).toBe(true);
+      expect(minutes).toBeGreaterThanOrEqual(1);
+      expect(minutes).toBeLessThanOrEqual(MAX_PAIRING_CREDENTIAL_TTL_MINUTES);
+    }
+  });
+
+  it("defaults to a day and rejects unknown values", () => {
+    expect(DEFAULT_THREAD_INVITE_TTL).toBe("24h");
+    expect(isThreadInviteTtlOption("24h")).toBe(true);
+    expect(isThreadInviteTtlOption("forever")).toBe(false);
   });
 });

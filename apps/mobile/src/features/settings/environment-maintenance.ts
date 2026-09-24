@@ -12,10 +12,12 @@ import {
 import { compareSemverVersions } from "@t3tools/shared/semver";
 import * as Schema from "effect/Schema";
 
+/** Operate scope alone is not enough: a thread guest carries it but may only converse. */
 export function canMaintainEnvironment(session: AuthSessionState | null, connected: boolean) {
   return (
     connected &&
     session?.authenticated === true &&
+    session.threadId === undefined &&
     session.scopes?.includes(AuthOrchestrationOperateScope) === true
   );
 }

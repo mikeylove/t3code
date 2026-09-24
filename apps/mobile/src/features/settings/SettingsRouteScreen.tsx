@@ -9,6 +9,7 @@ import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
+import { useGuestOnlyEnvironments } from "../../state/thread-guest";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -129,6 +130,9 @@ function LocalSettingsRouteScreen() {
 
 function SettingsIndexSections() {
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
+  // A device that is only ever a thread guest has no server to configure,
+  // no usage to report, and no archive to browse; those rows would only fail.
+  const guestOnly = useGuestOnlyEnvironments();
   const noServerTargets = selectedTargets.length === 0;
   const selectedProject = projectGroups.find((group) => group.key === selectedProjectKey);
   const scopedProjectMembers =
@@ -154,7 +158,7 @@ function SettingsIndexSections() {
       </SettingsSection>
 
       <SettingsSection title="Projects & threads">
-        {selectedProjectKey !== null ? (
+        {selectedProjectKey !== null && !guestOnly ? (
           <SettingsRow
             icon="folder"
             label="Overview"
@@ -164,44 +168,50 @@ function SettingsIndexSections() {
         ) : null}
         <SettingsRow icon="folder" label="Organization" target="SettingsOrganization" />
         <SettingsRow icon="text.bubble" label="Thread behavior" target="SettingsThreads" />
-        <SettingsRow icon="archivebox" label="Archived Threads" target="SettingsArchive" />
+        {guestOnly ? null : (
+          <SettingsRow icon="archivebox" label="Archived Threads" target="SettingsArchive" />
+        )}
       </SettingsSection>
 
-      <SettingsSection title="Server settings">
-        <SettingsRow
-          icon="person.crop.circle"
-          label="Profile"
-          target="SettingsEnvironmentProfile"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="text.bubble"
-          label="New threads"
-          target="SettingsEnvironmentNewThreads"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="arrow.triangle.branch"
-          label="Source control"
-          target="SettingsEnvironmentSourceControl"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="text.alignleft"
-          label="Agent behavior"
-          target="SettingsEnvironmentAgentBehavior"
-          disabled={noServerTargets}
-        />
-        <SettingsRow
-          icon="arrow.clockwise"
-          label="Maintenance"
-          target="SettingsEnvironmentMaintenance"
-          disabled={noServerTargets}
-        />
-      </SettingsSection>
+      {guestOnly ? null : (
+        <SettingsSection title="Server settings">
+          <SettingsRow
+            icon="person.crop.circle"
+            label="Profile"
+            target="SettingsEnvironmentProfile"
+            disabled={noServerTargets}
+          />
+          <SettingsRow
+            icon="text.bubble"
+            label="New threads"
+            target="SettingsEnvironmentNewThreads"
+            disabled={noServerTargets}
+          />
+          <SettingsRow
+            icon="arrow.triangle.branch"
+            label="Source control"
+            target="SettingsEnvironmentSourceControl"
+            disabled={noServerTargets}
+          />
+          <SettingsRow
+            icon="text.alignleft"
+            label="Agent behavior"
+            target="SettingsEnvironmentAgentBehavior"
+            disabled={noServerTargets}
+          />
+          <SettingsRow
+            icon="arrow.clockwise"
+            label="Maintenance"
+            target="SettingsEnvironmentMaintenance"
+            disabled={noServerTargets}
+          />
+        </SettingsSection>
+      )}
 
       <SettingsSection title="App">
-        <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
+        {guestOnly ? null : (
+          <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
+        )}
         <SettingsRow icon="info.circle" label="About T3 Code" target="SettingsAbout" />
       </SettingsSection>
     </>

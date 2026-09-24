@@ -978,6 +978,7 @@ import {
 } from "@t3tools/client-runtime/providerSkills";
 import { searchProviderSkills } from "../../providerSkillSearch";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useThreadGuestScope } from "../../hooks/useThreadGuest";
 import { usePanelAnimationSettings } from "../../panelAnimations";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
@@ -1207,7 +1208,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   preserveComposerFocusOnPointerDown?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
-  onImplementPlanInNewThread: () => void;
+  onImplementPlanInNewThread?: (() => void) | undefined;
   onCompactContext?: (() => void) | undefined;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
@@ -2034,11 +2035,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  const { enabled: planModeUiEnabled, interactionMode } = resolveComposerInteractionMode({
+  const { enabled: planModeAvailable, interactionMode } = resolveComposerInteractionMode({
     planModeEnabled: settings.planModeEnabled,
     provider: selectedProviderStatus,
     interactionMode: requestedInteractionMode,
   });
+  // A thread guest cannot dispatch mode changes, so the plan/build switch
+  // (footer toggle, overflow menu, /plan and /default) stays hidden.
+  const { isGuest } = useThreadGuestScope();
+  const planModeUiEnabled = planModeAvailable && !isGuest;
   const selectedModelSelection = useMemo<ModelSelection>(
     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
@@ -4968,20 +4973,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           },
         ]
       : []),
-    {
-      id: "mode",
-      content: (
-        <ComposerFooterModeControls
-          showInteractionModeToggle={planModeUiEnabled}
-          interactionMode={interactionMode}
-          runtimeMode={runtimeMode}
-          size={composerControlsInStrip ? "xs" : "sm"}
-          hidden={composerControlsHidden || restingHiddenBlockCount > 0}
-          onToggleInteractionMode={toggleInteractionMode}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
-      ),
-    },
+    // Runtime mode is set through a thread command a guest may not dispatch.
+    ...(isGuest
+      ? []
+      : [
+          {
+            id: "mode",
+            content: (
+              <ComposerFooterModeControls
+                showInteractionModeToggle={planModeUiEnabled}
+                interactionMode={interactionMode}
+                runtimeMode={runtimeMode}
+                size={composerControlsInStrip ? "xs" : "sm"}
+                hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+                onToggleInteractionMode={toggleInteractionMode}
+                onRuntimeModeChange={handleRuntimeModeChange}
+              />
+            ),
+          },
+        ]),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
@@ -5091,7 +5101,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           setMultipleModelSelections(null);
           onProviderModelSelect(instanceId, model);
         }}
-        onOpenProviderSetup={onOpenProviderSetup}
+        {...(isGuest ? {} : { onOpenProviderSetup })}
       />
 
       <>
@@ -5132,6 +5142,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             size={composerControlsInStrip ? "xs" : "sm"}
             hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
             showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
+            showRuntimeModeSelect={!isGuest}
             traitsMenuContent={
               hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
             }
@@ -5769,9 +5780,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const handleInterruptPrimaryAction = useCallback(() => {
     void onInterrupt();
   }, [onInterrupt]);
-  const handleImplementPlanInNewThreadPrimaryAction = useCallback(() => {
-    void onImplementPlanInNewThread();
-  }, [onImplementPlanInNewThread]);
+  // Undefined for a thread guest, which hides the "Implement in a new thread" split menu.
+  const handleImplementPlanInNewThreadPrimaryAction = useMemo(
+    () =>
+      isGuest
+        ? undefined
+        : () => {
+            void onImplementPlanInNewThread();
+          },
+    [isGuest, onImplementPlanInNewThread],
+  );
   // The phone composer collapses when the editor loses focus. Desktop only
   // rests on a timeline scroll, so losing focus there changes nothing.
   const scheduleComposerCollapseCheck = useCallback(() => {

@@ -135,6 +135,11 @@ export interface ThreadComposerProps {
   readonly serverConfig: T3ServerConfig | null;
   readonly queueCount: number;
   readonly environmentId: EnvironmentId;
+  /**
+   * Thread guest: the server refuses file search, pull request lookups, and
+   * mode changes, so the composer offers none of them. Model and send stay.
+   */
+  readonly guest?: boolean;
   readonly projectCwd: string | null;
   /** Why sending is blocked right now (shown as the send button's label), or null. */
   readonly sendBlockedReason?: string | null;
@@ -368,21 +373,23 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     return report !== null;
   }, [currentModelSelection.instanceId, onShowUsageLimits, props.serverConfig]);
 
+  const guest = props.guest === true;
   const composerMenu = useComposerCommandMenu({
     draftMessage: props.draftMessage,
     ownerKey: composerOwnerKey,
     environmentId: props.environmentId,
-    projectCwd: props.projectCwd,
-    pullRequestProjectId: props.serverConfig?.environment.capabilities.pullRequests
-      ? (project?.id ?? null)
-      : null,
+    projectCwd: guest ? null : props.projectCwd,
+    pullRequestProjectId:
+      !guest && props.serverConfig?.environment.capabilities.pullRequests
+        ? (project?.id ?? null)
+        : null,
     pullRequestRepository: project?.repositoryIdentity?.displayName ?? null,
     selectedProviderStatus,
     hasThread: true,
     hasCompactableConversation: props.hasCompactableConversation,
     onChangeDraftMessage: props.onChangeDraftMessage,
     onUpdateInteractionMode:
-      selectedProviderStatus?.showInteractionModeToggle === false
+      guest || selectedProviderStatus?.showInteractionModeToggle === false
         ? undefined
         : props.onUpdateInteractionMode,
     offersUsageLimits: usageLimitsOffered,
@@ -557,11 +564,12 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
       onUpdateOptionSelections: (options) =>
         props.onUpdateModelSelection({ ...currentModelSelection, options }),
       runtimeMode: currentRuntimeMode,
-      onUpdateRuntimeMode: props.onUpdateRuntimeMode,
+      onUpdateRuntimeMode: guest ? undefined : props.onUpdateRuntimeMode,
     }),
     [
       currentModelSelection,
       currentRuntimeMode,
+      guest,
       props.onUpdateModelSelection,
       props.onUpdateRuntimeMode,
       providerOptionDescriptors,

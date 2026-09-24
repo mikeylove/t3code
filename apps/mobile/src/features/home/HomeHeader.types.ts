@@ -8,6 +8,8 @@ export type HomeHeaderEnvironment = HomeListFilterMenuEnvironment;
 
 export interface HomeHeaderProps {
   readonly environments: ReadonlyArray<HomeHeaderEnvironment>;
+  /** Every environment in scope is a thread guest session: no new task, search, or project filter. */
+  readonly guestOnly: boolean;
   readonly projects: ReadonlyArray<HomeListFilterMenuProject>;
   readonly searchQuery: string;
   readonly selectedEnvironmentId: EnvironmentId | null;

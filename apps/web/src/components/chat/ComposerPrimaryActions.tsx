@@ -31,7 +31,8 @@ interface ComposerPrimaryActionsProps {
   preserveComposerFocusOnPointerDown?: boolean;
   onPreviousPendingQuestion: () => void;
   onInterrupt: () => void;
-  onImplementPlanInNewThread: () => void;
+  /** Absent when this client cannot create threads (a thread guest): the split menu hides. */
+  onImplementPlanInNewThread?: (() => void) | undefined;
 }
 
 const formatPendingPrimaryActionLabel = (input: {
@@ -181,32 +182,36 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         >
           {isConnecting || isSendBusy ? "Sending..." : "Implement"}
         </button>
-        <Menu>
-          <MenuTrigger
-            render={
-              <button
-                type="button"
-                className={cn(
-                  messageActionPillClassName,
-                  "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
-                )}
-                aria-label="Implementation actions"
-                {...pointerFocusProps}
-                disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
-              />
-            }
-          >
-            <ChevronDownIcon className="size-3.5" />
-          </MenuTrigger>
-          <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
-            <MenuItem
-              disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
-              onClick={() => void onImplementPlanInNewThread()}
+        {onImplementPlanInNewThread ? (
+          <Menu>
+            <MenuTrigger
+              render={
+                <button
+                  type="button"
+                  className={cn(
+                    messageActionPillClassName,
+                    "h-9 rounded-l-none border-l border-message-action-foreground/20 px-2 sm:h-8",
+                  )}
+                  aria-label="Implementation actions"
+                  {...pointerFocusProps}
+                  disabled={
+                    isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable
+                  }
+                />
+              }
             >
-              Implement in a new thread
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
+              <ChevronDownIcon className="size-3.5" />
+            </MenuTrigger>
+            <MenuPopup align="end" side="top" {...composerFloatingLayerProps}>
+              <MenuItem
+                disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+                onClick={() => void onImplementPlanInNewThread()}
+              >
+                Implement in a new thread
+              </MenuItem>
+            </MenuPopup>
+          </Menu>
+        ) : null}
       </div>
     );
   }

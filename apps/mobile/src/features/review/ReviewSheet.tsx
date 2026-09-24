@@ -37,6 +37,7 @@ import { MaterialScreenContent } from "../../components/MaterialScreenContent";
 import { cn } from "../../lib/cn";
 import { environmentCatalog } from "../../connection/catalog";
 import { useEnvironmentPresentation } from "../../state/presentation";
+import { useGuestThreadId } from "../../state/thread-guest";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
@@ -455,6 +456,8 @@ export function ReviewSheet(props: ReviewSheetProps) {
   const { themeAppearance: selectedTheme } = useAppearancePreferences();
   const headerIcon = String(useUniwindTheme()["--color-icon"]);
   const { environmentId, threadId } = props.route.params;
+  // Guests may read this thread's turn diffs; the git-backed sections stay off.
+  const guest = useGuestThreadId(environmentId) !== null;
   const environment = useEnvironmentPresentation(environmentId);
   const retryEnvironment = useAtomCommand(environmentCatalog.retryNow, "environment retry");
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
@@ -482,6 +485,7 @@ export function ReviewSheet(props: ReviewSheetProps) {
     environmentId,
     threadId,
     reviewCache,
+    guest,
   });
   useReviewDiffPrewarming({
     threadKey: reviewCache.threadKey,

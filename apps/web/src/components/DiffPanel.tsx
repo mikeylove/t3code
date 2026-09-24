@@ -34,6 +34,7 @@ import { cn } from "~/lib/utils";
 import { selectThreadDiffPanelSelection, useDiffPanelStore } from "../diffPanelStore";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useTheme } from "../hooks/useTheme";
+import { useThreadGuestScope } from "../hooks/useThreadGuest";
 import {
   buildFileDiffContentVersion,
   buildFileDiffIdentityKey,
@@ -177,8 +178,13 @@ export default function DiffPanel({
     serverConfig?.availableEditors ?? [],
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
+  // A thread guest may read turn and full-thread diffs (orchestration.getTurnDiff /
+  // getFullThreadDiff) but nothing that touches the checkout: no git status, no
+  // working-tree or branch preview, no refs. The panel pins itself to turn scope
+  // for guests and never issues those queries.
+  const { isGuest } = useThreadGuestScope();
   const gitStatusQuery = useEnvironmentQuery(
-    activeThread !== null && activeThread !== undefined && activeCwd != null
+    !isGuest && activeThread !== null && activeThread !== undefined && activeCwd != null
       ? vcsEnvironment.status({
           environmentId: activeThread.environmentId,
           input: { cwd: activeCwd },
@@ -214,7 +220,12 @@ export default function DiffPanel({
     );
   }, [diffSelection, orderedTurnDiffSummaries, routeThreadRef]);
 
-  const selectedTurnId = diffSelection.kind === "turn" ? diffSelection.turnId : null;
+  const selectedTurnId =
+    diffSelection.kind === "turn"
+      ? diffSelection.turnId
+      : isGuest
+        ? (orderedTurnDiffSummaries[0]?.turnId ?? null)
+        : null;
   const selectedGitScope = diffSelection.kind === "unstaged" ? "unstaged" : "branch";
   const selectedBaseRef = diffSelection.kind === "branch" ? diffSelection.baseRef : null;
   const selectedFilePath = diffSelection.kind === "turn" ? diffSelection.filePath : null;
@@ -269,7 +280,7 @@ export default function DiffPanel({
     { enabled: isGitRepo && selectedTurn !== undefined },
   );
   const primaryBranchDiffPreview = useEnvironmentQuery(
-    selectedTurnId === null && activeThread && activeCwd
+    !isGuest && selectedTurnId === null && activeThread && activeCwd
       ? reviewEnvironment.diffPreview({
           environmentId: activeThread.environmentId,
           input: {
@@ -281,6 +292,7 @@ export default function DiffPanel({
       : null,
   );
   const shouldRetryBranchDiffAtEnvironmentCwd =
+    !isGuest &&
     selectedTurnId === null &&
     primaryBranchDiffPreview.error?.includes("configured workspace root") === true &&
     serverConfig?.cwd !== undefined &&
@@ -301,7 +313,7 @@ export default function DiffPanel({
     ? fallbackBranchDiffPreview
     : primaryBranchDiffPreview;
   const canRefreshGitDiff =
-    isGitRepo && selectedTurnId === null && activeThread != null && activeCwd != null;
+    !isGuest && isGitRepo && selectedTurnId === null && activeThread != null && activeCwd != null;
   const activeThreadRefreshKey = routeThreadRef
     ? `${routeThreadRef.environmentId}:${routeThreadRef.threadId}`
     : null;
@@ -681,12 +693,16 @@ export default function DiffPanel({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuRadioGroup value={selectedScopeValue} onValueChange={selectScopeValue}>
-              <DropdownMenuRadioItem value="unstaged" closeOnClick>
-                <span>Working tree</span>
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="branch" closeOnClick>
-                <span>Branch changes</span>
-              </DropdownMenuRadioItem>
+              {isGuest ? null : (
+                <>
+                  <DropdownMenuRadioItem value="unstaged" closeOnClick>
+                    <span>Working tree</span>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="branch" closeOnClick>
+                    <span>Branch changes</span>
+                  </DropdownMenuRadioItem>
+                </>
+              )}
               <DropdownMenuRadioItem value="latest" closeOnClick>
                 <span>Latest turn</span>
               </DropdownMenuRadioItem>

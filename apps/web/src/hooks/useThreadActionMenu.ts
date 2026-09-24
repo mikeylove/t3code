@@ -41,6 +41,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { useThreadActions } from "./useThreadActions";
+import { useThreadGuestScope } from "./useThreadGuest";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -97,6 +98,7 @@ export function useThreadActionMenu(input: {
   });
   const handleNewThread = useNewThreadHandler();
   const canInviteToThread = useCanInviteToThread();
+  const { isGuest } = useThreadGuestScope();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
@@ -152,6 +154,7 @@ export function useThreadActionMenu(input: {
           isRegeneratingTitle,
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
           canInvite: canInviteToThread(threadRef),
+          isGuest,
           supports,
           snoozePresets,
         });
@@ -332,6 +335,7 @@ export function useThreadActionMenu(input: {
       copyThreadIdToClipboard,
       deleteThread,
       handleNewThread,
+      isGuest,
       logicalProjectKeyByPhysicalKey,
       markThreadUnread,
       onStartRename,

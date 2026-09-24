@@ -18,6 +18,8 @@ import { useMaterialToolbarHeight } from "../../components/useMaterialToolbarHei
 export function MaterialThreadListToolbar(props: {
   readonly searchQuery: string;
   readonly onSearchQueryChange: (query: string) => void;
+  /** Thread guests may not search; the field and its button stay out of the bar. */
+  readonly searchHidden?: boolean;
   readonly filterActions: MenuAction[];
   readonly filterCustomized: boolean;
   readonly onFilterAction: NonNullable<ComponentProps<typeof ControlPillMenu>["onPressAction"]>;
@@ -33,13 +35,15 @@ export function MaterialThreadListToolbar(props: {
   const { onRequestVisibility, onSearchQueryChange } = props;
   const searchRef = useRef<TextInput>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const searching = searchOpen || props.searchQuery.length > 0;
+  const searchHidden = props.searchHidden === true;
+  const searching = !searchHidden && (searchOpen || props.searchQuery.length > 0);
   const openSearch = useCallback(() => {
+    if (searchHidden) return false;
     onRequestVisibility?.();
     setSearchOpen(true);
     searchRef.current?.focus();
     return true;
-  }, [onRequestVisibility]);
+  }, [onRequestVisibility, searchHidden]);
   useHardwareKeyboardCommand("focusSearch", openSearch);
 
   const closeSearch = useCallback(() => {
@@ -102,11 +106,13 @@ export function MaterialThreadListToolbar(props: {
                   brand={<CompactBrandTitle allowFontScaling={false} />}
                 />
               </View>
-              <AndroidHeaderIconButton
-                accessibilityLabel="Search threads"
-                icon="magnifyingglass"
-                onPress={openSearch}
-              />
+              {searchHidden ? null : (
+                <AndroidHeaderIconButton
+                  accessibilityLabel="Search threads"
+                  icon="magnifyingglass"
+                  onPress={openSearch}
+                />
+              )}
               <AndroidHeaderIconButton
                 accessibilityLabel="Open settings"
                 icon="gearshape"

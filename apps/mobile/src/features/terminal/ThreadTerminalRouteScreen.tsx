@@ -47,6 +47,7 @@ import {
   useKnownTerminalSessions,
 } from "../../state/use-terminal-session";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { useGuestRouteGuard } from "../../state/thread-guest";
 import { useSelectedThreadDetail } from "../../state/use-thread-detail";
 import { EnvironmentConnectionNotice } from "../connection/EnvironmentConnectionNotice";
 import { TerminalSurface } from "./NativeTerminalSurface";
@@ -259,6 +260,7 @@ export function ThreadTerminalRouteScreen(props: ThreadTerminalRouteScreenProps)
     ? EnvironmentId.make(routeEnvironmentIdRaw)
     : null;
   const routeThreadId = routeThreadIdRaw ? ThreadId.make(routeThreadIdRaw) : null;
+  useGuestRouteGuard(routeEnvironmentId);
   const environment = useEnvironmentPresentation(routeEnvironmentId);
   const isEnvironmentReady = environment.presentation?.connection.phase === "connected";
   const requestedTerminalId = firstRouteParam(params.terminalId);

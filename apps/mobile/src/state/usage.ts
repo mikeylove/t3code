@@ -25,6 +25,7 @@ import { useCallback, useMemo } from "react";
 import { appAtomRegistry } from "./atom-registry";
 import { environmentPresentations } from "./presentation";
 import { serverEnvironment } from "./server";
+import { guestThreadIdAtom } from "./thread-guest";
 
 export interface EnvironmentUsageStatus {
   readonly environmentId: EnvironmentId;
@@ -49,6 +50,8 @@ const usageByWindowAtom = Atom.family((windowKey: string) =>
 
     const statuses: EnvironmentUsageStatus[] = [];
     for (const [environmentId, presentation] of presentations) {
+      // The server refuses usage reads to thread guests; asking would only surface an error.
+      if (get(guestThreadIdAtom(environmentId)) !== null) continue;
       const result = get(serverEnvironment.usageSummary({ environmentId, input }));
       statuses.push({
         environmentId,

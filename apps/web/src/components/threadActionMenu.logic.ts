@@ -48,6 +48,12 @@ export interface ThreadActionMenuState {
   readonly isRunning: boolean;
   /** True when this client can mint a thread-scoped pairing link for the thread (see canCreateThreadInvite). */
   readonly canInvite: boolean;
+  /**
+   * True when this client is a thread guest (see useThreadGuestScope). The
+   * server only lets a guest converse, so the menu offers nothing that would
+   * change the thread's lifecycle, title, or worktree.
+   */
+  readonly isGuest: boolean;
   readonly supports: {
     readonly settlement: boolean;
     readonly snooze: boolean;
@@ -65,6 +71,23 @@ export interface ThreadActionMenuState {
 export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
+  if (state.isGuest) {
+    return [
+      { id: "mark-unread", label: "Mark unread", icon: "mail-open" },
+      {
+        id: "copy",
+        label: "Copy",
+        icon: "copy",
+        separatorBefore: true,
+        children: [
+          ...(state.branch
+            ? [{ id: "copy-branch" as const, label: "Branch", icon: "git-branch" }]
+            : []),
+          { id: "copy-thread-id", label: "Thread ID", icon: "hash" },
+        ],
+      },
+    ];
+  }
   return [
     ...(state.branch
       ? [

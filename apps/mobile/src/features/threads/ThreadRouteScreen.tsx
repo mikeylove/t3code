@@ -58,6 +58,7 @@ import {
 import { useKnownTerminalSessions } from "../../state/use-terminal-session";
 import { useSelectedThreadDetailState } from "../../state/use-thread-detail";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { useGuestThreadId } from "../../state/thread-guest";
 import { GitActionProgressOverlay } from "./GitActionProgressOverlay";
 import {
   buildTerminalMenuSessions,
@@ -101,6 +102,7 @@ function ThreadHeader(
     readonly onToggleInspector: () => void;
     readonly onOpenGitInspector: () => void;
     readonly onOpenFilesInspector: () => void;
+    readonly onOpenReview: () => void;
   },
 ) {
   const navigation = useNavigation();
@@ -115,6 +117,14 @@ function ThreadHeader(
         icon: "chevron.left",
         onPress: props.onReturnToThread,
       });
+    }
+    if (props.guest) {
+      actions.push({
+        accessibilityLabel: "Review changes",
+        icon: "text.bubble",
+        onPress: props.onOpenReview,
+      });
+      return actions;
     }
     if (props.hasThreadCwd) {
       const filesVisible = props.inspectorMode === "files" && panes.auxiliaryPaneVisible;
@@ -139,9 +149,11 @@ function ThreadHeader(
     });
     return actions;
   }, [
+    props.guest,
     props.inspectorMode,
     panes.auxiliaryPaneVisible,
     props.onOpenFilesInspector,
+    props.onOpenReview,
     onOpenTerminal,
     props.onOpenGitInspector,
     toggleAuxiliaryPane,
@@ -159,7 +171,7 @@ function ThreadHeader(
         options={native.options}
         optionsVersion={props.gitControls.projectScripts}
         trailing={
-          props.fileInspectorSupported && props.hasThreadCwd ? (
+          !props.guest && props.fileInspectorSupported && props.hasThreadCwd ? (
             <ScreenHeaderButton
               accessibilityLabel={
                 props.inspectorMode !== null && panes.auxiliaryPaneVisible
@@ -260,6 +272,22 @@ export function ThreadRouteScreen(props: ThreadRouteScreenProps) {
   const routeEnvironmentShellState = useEnvironmentShellState(environmentId);
   const { onReconnectEnvironment } = useRemoteConnections();
   const navigation = useNavigation();
+  // A guest session sees one thread; any other thread id in the route (an old
+  // link, a typo) is swapped for it rather than shown as unavailable.
+  const guestThreadId = useGuestThreadId(environmentId);
+  const routeIsForeignToGuest =
+    guestThreadId !== null && threadIdRaw !== null && threadIdRaw !== guestThreadId;
+  useEffect(() => {
+    if (!routeIsForeignToGuest || environmentId === null || guestThreadId === null) {
+      return;
+    }
+    navigation.dispatch(
+      StackActions.replace("Thread", {
+        environmentId: String(environmentId),
+        threadId: String(guestThreadId),
+      }),
+    );
+  }, [environmentId, guestThreadId, navigation, routeIsForeignToGuest]);
   const routeConnectionState =
     routeEnvironmentRuntime?.connectionState ?? (environmentId ? "available" : connectionState);
   const routeThreadKey =
@@ -272,7 +300,7 @@ export function ThreadRouteScreen(props: ThreadRouteScreenProps) {
       : scopedThreadKey(selectedThread.environmentId, selectedThread.id);
   const selectedThreadDetailState = useSelectedThreadDetailState();
 
-  if (environmentId === null || threadIdRaw === null) {
+  if (environmentId === null || threadIdRaw === null || routeIsForeignToGuest) {
     return <OpeningThreadLoadingScreen />;
   }
 
@@ -352,14 +380,18 @@ function ThreadRouteContent(
   }, [selectedThread, selectedThreadDetailState]);
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const composer = useThreadComposerState();
-  const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions();
-  const requests = useSelectedThreadRequests();
-  const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, "thread interrupt");
-  const navigation = useNavigation();
   const params = props.route.params;
   const environmentIdRaw = firstRouteParam(params.environmentId);
   const environmentId = environmentIdRaw ? EnvironmentId.make(environmentIdRaw) : null;
+  // Guests get the conversation and nothing that reaches the worktree: git,
+  // terminals, files, and their subscriptions stay off so the server never
+  // has to refuse them.
+  const guest = useGuestThreadId(environmentId) !== null;
+  const gitState = useSelectedThreadGitState({ disabled: guest });
+  const gitActions = useSelectedThreadGitActions({ disabled: guest });
+  const requests = useSelectedThreadRequests();
+  const interruptThreadTurn = useAtomCommand(threadEnvironment.interruptTurn, "thread interrupt");
+  const navigation = useNavigation();
   const threadId = firstRouteParam(params.threadId);
   const routeThreadIdentity =
     environmentIdRaw !== null && threadId !== null ? `${environmentIdRaw}:${threadId}` : null;
@@ -448,7 +480,7 @@ function ThreadRouteContent(
     .join(" · ");
   /* ─── Git status for native header trigger ───────────────────────── */
   const gitStatus = useEnvironmentQuery(
-    selectedThread !== null && selectedThreadCwd !== null
+    selectedThread !== null && selectedThreadCwd !== null && !guest
       ? vcsEnvironment.status({
           environmentId: selectedThread.environmentId,
           input: { cwd: selectedThreadCwd },
@@ -456,7 +488,7 @@ function ThreadRouteContent(
       : null,
   );
   const knownTerminalSessions = useKnownTerminalSessions({
-    environmentId: selectedThread?.environmentId ?? null,
+    environmentId: guest ? null : (selectedThread?.environmentId ?? null),
     threadId: selectedThread?.id ?? null,
   });
   const terminalMenuSessions = useMemo(
@@ -485,6 +517,16 @@ function ThreadRouteContent(
   );
   const gitActionProgress = useGitActionProgress(gitActionProgressTarget);
 
+  // Guests have no git menu, so the review sheet gets its own header button.
+  const handleOpenReview = useCallback(() => {
+    if (selectedThread === null) {
+      return;
+    }
+    navigation.navigate("ThreadReview", {
+      environmentId: selectedThread.environmentId,
+      threadId: selectedThread.id,
+    });
+  }, [navigation, selectedThread]);
   const handleOpenGitInspector = useCallback(() => {
     if (!fileInspector.supported) {
       if (selectedThread === null) {
@@ -1022,6 +1064,7 @@ function ThreadRouteContent(
           onNativePasteText={composer.onNativePasteText}
           onRemoveDraftImage={composer.onRemoveDraftImage}
           serverConfig={serverConfig}
+          guest={guest}
           onStopThread={awaitingBootstrapTurn ? handleCancelWorktreeSetup : handleStopThread}
           onSendMessage={composer.onSendMessage}
           onReconnectEnvironment={handleReconnectEnvironment}
@@ -1047,6 +1090,7 @@ function ThreadRouteContent(
         headerColor={headerColor}
         usesNativeHeaderGlass={usesNativeHeaderGlass}
         gitControls={threadGitControlProps}
+        guest={guest}
         hasThreadCwd={selectedThreadCwd !== null}
         hasWorkspaceRoot={Boolean(selectedThreadProject?.workspaceRoot)}
         fileInspectorSupported={fileInspector.supported}
@@ -1054,6 +1098,7 @@ function ThreadRouteContent(
         onToggleInspector={handleToggleInspector}
         onOpenGitInspector={handleOpenGitInspector}
         onOpenFilesInspector={handleOpenFilesInspector}
+        onOpenReview={handleOpenReview}
         onReturnToThread={props.onReturnToThread}
       />
 

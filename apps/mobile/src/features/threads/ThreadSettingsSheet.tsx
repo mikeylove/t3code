@@ -242,7 +242,8 @@ type ThreadSettingsSessionProps = {
   readonly optionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly onUpdateOptionSelections: (selections: ReadonlyArray<ProviderOptionSelection>) => void;
   readonly runtimeMode: RuntimeMode;
-  readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  /** Absent when the runtime may not change here (thread guests); the row is not shown. */
+  readonly onUpdateRuntimeMode: ((mode: RuntimeMode) => void) | undefined;
 };
 
 export type ExistingThreadSettingsRouteSession = ThreadSettingsSessionProps & {
@@ -294,7 +295,7 @@ type ThreadSettingsSessionValue = {
   readonly favoritesLoaded: boolean;
   readonly toggleFavorite: (option: ModelOption) => void;
   readonly runtimeMode: RuntimeMode;
-  readonly onUpdateRuntimeMode: (mode: RuntimeMode) => void;
+  readonly onUpdateRuntimeMode: ((mode: RuntimeMode) => void) | undefined;
   readonly displayedDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
   readonly providerExpansionOverrides: ReadonlySet<string>;
   readonly hasLegacyModels: boolean;
@@ -683,6 +684,7 @@ function ThreadSettingsOptionsItem(props: {
 }) {
   const insets = useSafeAreaInsets();
   const session = useThreadSettingsSession();
+  const runtimeRowVisible = session.onUpdateRuntimeMode !== undefined;
   const bottomToolbarInset =
     Platform.OS === "ios" && NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED
       ? NATIVE_MAIL_SEARCH_TOOLBAR_CONTENT_INSET
@@ -690,56 +692,75 @@ function ThreadSettingsOptionsItem(props: {
 
   return (
     <View style={{ paddingBottom: insets.bottom + bottomToolbarInset + 12 }}>
-      <Text className="px-5 pb-2 pt-2 text-sm font-t3-medium text-foreground-muted">Options</Text>
-      <Animated.View
-        className="mx-4 overflow-hidden rounded-2xl bg-card"
-        layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
-      >
-        {session.displayedDescriptors.map((descriptor) => {
-          if (descriptor.type === "select") {
-            return (
-              <Animated.View
-                key={descriptor.id}
-                entering={
-                  props.animationsReady ? THREAD_SETTINGS_OPTION_ENTER_TRANSITION : undefined
-                }
-                exiting={props.animationsReady ? THREAD_SETTINGS_OPTION_EXIT_TRANSITION : undefined}
-                layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
-              >
+      {session.displayedDescriptors.length === 0 && !runtimeRowVisible ? null : (
+        <>
+          <Text className="px-5 pb-2 pt-2 text-sm font-t3-medium text-foreground-muted">
+            Options
+          </Text>
+          <Animated.View
+            className="mx-4 overflow-hidden rounded-2xl bg-card"
+            layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
+          >
+            {session.displayedDescriptors.map((descriptor, index) => {
+              const isLast =
+                runtimeRowVisible === false && index === session.displayedDescriptors.length - 1;
+              if (descriptor.type === "select") {
+                return (
+                  <Animated.View
+                    key={descriptor.id}
+                    entering={
+                      props.animationsReady ? THREAD_SETTINGS_OPTION_ENTER_TRANSITION : undefined
+                    }
+                    exiting={
+                      props.animationsReady ? THREAD_SETTINGS_OPTION_EXIT_TRANSITION : undefined
+                    }
+                    layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
+                  >
+                    <DisclosureRow
+                      isLast={isLast}
+                      label={descriptor.label}
+                      value={getProviderOptionCurrentLabel(descriptor)}
+                      onPress={() => props.onOpenSubmenu({ kind: "descriptor", id: descriptor.id })}
+                    />
+                  </Animated.View>
+                );
+              }
+              return (
+                <Animated.View
+                  key={descriptor.id}
+                  entering={
+                    props.animationsReady ? THREAD_SETTINGS_OPTION_ENTER_TRANSITION : undefined
+                  }
+                  exiting={
+                    props.animationsReady ? THREAD_SETTINGS_OPTION_EXIT_TRANSITION : undefined
+                  }
+                  layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
+                >
+                  <SwitchRow
+                    isLast={isLast}
+                    label={descriptor.label}
+                    value={descriptor.currentValue ?? false}
+                    onValueChange={(value) => session.applyOptionChange(descriptor.id, value)}
+                  />
+                </Animated.View>
+              );
+            })}
+            {runtimeRowVisible ? (
+              <Animated.View layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}>
                 <DisclosureRow
-                  label={descriptor.label}
-                  value={getProviderOptionCurrentLabel(descriptor)}
-                  onPress={() => props.onOpenSubmenu({ kind: "descriptor", id: descriptor.id })}
+                  isLast
+                  label="Runtime"
+                  value={
+                    RUNTIME_MODE_CHOICES.find((choice) => choice.mode === session.runtimeMode)
+                      ?.label
+                  }
+                  onPress={() => props.onOpenSubmenu({ kind: "runtime" })}
                 />
               </Animated.View>
-            );
-          }
-          return (
-            <Animated.View
-              key={descriptor.id}
-              entering={props.animationsReady ? THREAD_SETTINGS_OPTION_ENTER_TRANSITION : undefined}
-              exiting={props.animationsReady ? THREAD_SETTINGS_OPTION_EXIT_TRANSITION : undefined}
-              layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}
-            >
-              <SwitchRow
-                label={descriptor.label}
-                value={descriptor.currentValue ?? false}
-                onValueChange={(value) => session.applyOptionChange(descriptor.id, value)}
-              />
-            </Animated.View>
-          );
-        })}
-        <Animated.View layout={THREAD_SETTINGS_OPTIONS_LAYOUT_TRANSITION}>
-          <DisclosureRow
-            isLast
-            label="Runtime"
-            value={
-              RUNTIME_MODE_CHOICES.find((choice) => choice.mode === session.runtimeMode)?.label
-            }
-            onPress={() => props.onOpenSubmenu({ kind: "runtime" })}
-          />
-        </Animated.View>
-      </Animated.View>
+            ) : null}
+          </Animated.View>
+        </>
+      )}
 
       {Platform.OS !== "ios" && session.hasLegacyModels ? (
         <>
@@ -950,7 +971,7 @@ function ThreadSettingsChoiceContent(props: {
             selected: choice.mode === session.runtimeMode,
             onPress: () => {
               void Haptics.selectionAsync();
-              session.onUpdateRuntimeMode(choice.mode);
+              session.onUpdateRuntimeMode?.(choice.mode);
               props.onSelected();
             },
           })),

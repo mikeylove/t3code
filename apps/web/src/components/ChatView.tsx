@@ -272,6 +272,7 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { useThreadActions } from "../hooks/useThreadActions";
+import { useThreadGuestScope } from "../hooks/useThreadGuest";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import {
   getComposerPromptInjectionState,
@@ -1477,6 +1478,11 @@ export default function ChatView(props: ChatViewProps) {
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
+  // A thread guest gets the conversation and read-only diffs: no terminals,
+  // git, files, preview, reverts, or thread lifecycle. The server denies those
+  // RPCs regardless; hiding them here keeps the surface honest and the console
+  // quiet. Turn and full-thread diffs are "thread" access, so they stay.
+  const { isGuest } = useThreadGuestScope();
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -2043,7 +2049,9 @@ export default function ChatView(props: ChatViewProps) {
     [activeKnownTerminalIds, panelTerminalIds],
   );
   const previewPanelOpen = activeRightPanelKind === "preview" && isPreviewSupportedInRuntime();
-  const rightPanelOpen = rightPanelState.isOpen;
+  // A guest's right panel hosts the diff and nothing else: another persisted
+  // surface (terminal, files, preview) counts as closed rather than rendered.
+  const rightPanelOpen = rightPanelState.isOpen && (!isGuest || activeRightPanelKind === "diff");
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   const activeTerminalDrawerPresence = usePanelPresence(
@@ -2055,10 +2063,13 @@ export default function ChatView(props: ChatViewProps) {
   );
   const rightPanelPresenceValue = useMemo(
     () => ({
-      activeSurface: activeRightPanelSurface,
-      surfaces: rightPanelState.surfaces,
+      activeSurface:
+        isGuest && activeRightPanelSurface?.kind !== "diff" ? null : activeRightPanelSurface,
+      surfaces: isGuest
+        ? rightPanelState.surfaces.filter((surface) => surface.kind === "diff")
+        : rightPanelState.surfaces,
     }),
-    [activeRightPanelSurface, rightPanelState.surfaces],
+    [activeRightPanelSurface, isGuest, rightPanelState.surfaces],
   );
   const rightPanelPresence = usePanelPresence(
     rightPanelOpen && activeThreadRef !== null,
@@ -3648,7 +3659,7 @@ export default function ChatView(props: ChatViewProps) {
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   const gitStatusQuery = useEnvironmentQuery(
-    gitStatusCwd === null
+    gitStatusCwd === null || isGuest
       ? null
       : vcsEnvironment.status({
           environmentId,
@@ -3656,7 +3667,7 @@ export default function ChatView(props: ChatViewProps) {
         }),
   );
   useWorkspaceMutationRefresh({
-    enabled: gitStatusCwd !== null,
+    enabled: gitStatusCwd !== null && !isGuest,
     mutationId: workspaceMutationId,
     refresh: gitStatusQuery.refresh,
     resourceKey: `git-status:${activeThreadKey ?? ""}:${gitStatusCwd ?? ""}`,
@@ -6710,6 +6721,19 @@ export default function ChatView(props: ChatViewProps) {
       });
       if (!command) return;
 
+      // Owner-only shortcuts stay inert for a thread guest: the controls they
+      // drive are hidden, and the server would refuse the commands anyway.
+      // `diff.toggle` is not among them; guests may read diffs.
+      if (
+        isGuest &&
+        (command === "thread.settle" ||
+          command === "thread.pin" ||
+          command.startsWith("terminal.") ||
+          command.startsWith("rightPanel."))
+      ) {
+        return;
+      }
+
       if (command === "thread.copyReference") {
         event.preventDefault();
         event.stopPropagation();
@@ -6950,6 +6974,7 @@ export default function ChatView(props: ChatViewProps) {
     confirmAndUnpinThread,
     copyActiveThreadReference,
     getShortcutContext,
+    isGuest,
     toggleRightPanel,
     toggleRightPanelMaximized,
     toggleTerminalVisibility,
@@ -9573,7 +9598,7 @@ export default function ChatView(props: ChatViewProps) {
       onToggleRightPanel={toggleRightPanel}
     />
   );
-  const panelLayoutControls = (
+  const panelLayoutControls = isGuest ? null : (
     <div
       className={cn(
         // Keep one viewport anchor inside the header's no-drag region. The
@@ -9879,7 +9904,7 @@ export default function ChatView(props: ChatViewProps) {
               <ProviderStatusBanner
                 status={visibleProviderStatus}
                 onDismiss={() => setDismissedProviderStatusBannerKey(providerStatusBannerKey)}
-                onOpenProviderSetup={openProviderSetup}
+                {...(isGuest ? {} : { onOpenProviderSetup: openProviderSetup })}
               />
               <ThreadErrorBanner
                 error={visibleThreadError}
@@ -9928,7 +9953,7 @@ export default function ChatView(props: ChatViewProps) {
                 displayThreadKey={displayedTimelineKey}
                 onOpenTurnDiff={paintOnlyDisplayedTimeline ? noopHeldTurnDiff : onOpenTurnDiff}
                 supportsConversationRollback={
-                  !paintOnlyDisplayedTimeline && supportsConversationRollback
+                  !paintOnlyDisplayedTimeline && !isGuest && supportsConversationRollback
                 }
                 onRevertToTurnCount={
                   paintOnlyDisplayedTimeline ? noopHeldRevert : onRevertTimelineTurn
@@ -10308,24 +10333,30 @@ export default function ChatView(props: ChatViewProps) {
         </div>
         {/* end horizontal flex container */}
 
-        {mountedTerminalThreadRefs.map(({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
-          <PersistentThreadTerminalDrawer
-            key={mountedThreadKey}
-            threadRef={mountedThreadRef}
-            threadId={mountedThreadRef.threadId}
-            active={mountedThreadKey === activeThreadKey}
-            launchContext={
-              mountedThreadKey === activeThreadKey ? (activeTerminalLaunchContext ?? null) : null
-            }
-            focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
-            splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
-            splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
-            newShortcutLabel={newTerminalShortcutLabel ?? undefined}
-            closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
-            keybindings={keybindings}
-            onAddTerminalContext={addTerminalContextToDraft}
-          />
-        ))}
+        {isGuest
+          ? null
+          : mountedTerminalThreadRefs.map(
+              ({ key: mountedThreadKey, threadRef: mountedThreadRef }) => (
+                <PersistentThreadTerminalDrawer
+                  key={mountedThreadKey}
+                  threadRef={mountedThreadRef}
+                  threadId={mountedThreadRef.threadId}
+                  active={mountedThreadKey === activeThreadKey}
+                  launchContext={
+                    mountedThreadKey === activeThreadKey
+                      ? (activeTerminalLaunchContext ?? null)
+                      : null
+                  }
+                  focusRequestId={mountedThreadKey === activeThreadKey ? terminalFocusRequestId : 0}
+                  splitShortcutLabel={splitTerminalShortcutLabel ?? undefined}
+                  splitVerticalShortcutLabel={splitTerminalVerticalShortcutLabel ?? undefined}
+                  newShortcutLabel={newTerminalShortcutLabel ?? undefined}
+                  closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
+                  keybindings={keybindings}
+                  onAddTerminalContext={addTerminalContextToDraft}
+                />
+              ),
+            )}
       </div>
 
       {rightPanelPresent && !shouldUseRightPanelSheet && activeThreadRef ? (
@@ -10361,14 +10392,14 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
           onAddDevice={addDeviceSurface}
-          browserAvailable={isPreviewSupportedInRuntime()}
-          terminalAvailable={activeProject !== null}
+          browserAvailable={!isGuest && isPreviewSupportedInRuntime()}
+          terminalAvailable={!isGuest && activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
-          filesAvailable={activeProject !== null}
-          pullRequestAvailable={pullRequestSurfaceAvailable}
-          pullRequestsAvailable={pullRequestsSurfaceAvailable}
-          agentsAvailable
-          deviceAvailable={activeThreadRef !== null}
+          filesAvailable={!isGuest && activeProject !== null}
+          pullRequestAvailable={!isGuest && pullRequestSurfaceAvailable}
+          pullRequestsAvailable={!isGuest && pullRequestsSurfaceAvailable}
+          agentsAvailable={!isGuest}
+          deviceAvailable={!isGuest && activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
           {rightPanelContent}
@@ -10418,14 +10449,14 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
             onAddDevice={addDeviceSurface}
-            browserAvailable={isPreviewSupportedInRuntime()}
-            terminalAvailable={activeProject !== null}
+            browserAvailable={!isGuest && isPreviewSupportedInRuntime()}
+            terminalAvailable={!isGuest && activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
-            filesAvailable={activeProject !== null}
-            pullRequestAvailable={pullRequestSurfaceAvailable}
-            pullRequestsAvailable={pullRequestsSurfaceAvailable}
-            agentsAvailable
-            deviceAvailable={activeThreadRef !== null}
+            filesAvailable={!isGuest && activeProject !== null}
+            pullRequestAvailable={!isGuest && pullRequestSurfaceAvailable}
+            pullRequestsAvailable={!isGuest && pullRequestsSurfaceAvailable}
+            agentsAvailable={!isGuest}
+            deviceAvailable={!isGuest && activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >
             {rightPanelContent}

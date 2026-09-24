@@ -1,4 +1,5 @@
 import { AuthStandardClientScopes, type ScopedThreadRef } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import { useCallback, useEffect, useId, useState } from "react";
 import { create } from "zustand";
 
@@ -9,7 +10,16 @@ import { desktopNetworkAccessStateAtom } from "~/state/desktopNetworkAccess";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
 import { useUiStateStore } from "~/uiStateStore";
-import { canCreateThreadInvite, resolveThreadInviteLink } from "./ThreadInviteDialog.logic";
+import {
+  canCreateThreadInvite,
+  DEFAULT_THREAD_INVITE_TTL,
+  isThreadInviteTtlOption,
+  resolveThreadInviteLink,
+  THREAD_INVITE_TTL_LABELS,
+  THREAD_INVITE_TTL_OPTIONS,
+  threadInviteTtlMinutes,
+  type ThreadInviteTtlOption,
+} from "./ThreadInviteDialog.logic";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -23,6 +33,7 @@ import {
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { QRCodeSvg } from "./ui/qr-code";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -40,6 +51,11 @@ export function requestThreadInvite(request: Request): void {
 function close() {
   useRequest.setState({ request: null });
 }
+
+const expiresAtFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
 
 /**
  * Whether the "Invite…" thread action applies to a thread. Reads the primary
@@ -72,18 +88,22 @@ export function ThreadInviteDialogHost() {
 function ThreadInviteDialog({ request }: { readonly request: Request }) {
   const id = useId();
   const [name, setName] = useState("");
+  const [ttl, setTtl] = useState<ThreadInviteTtlOption>(DEFAULT_THREAD_INVITE_TTL);
   const [isCreating, setIsCreating] = useState(false);
-  const [credential, setCredential] = useState<string | null>(null);
+  const [created, setCreated] = useState<{
+    readonly credential: string;
+    readonly expiresAt: Date;
+  } | null>(null);
   const defaultEndpointKey = useUiStateStore((state) => state.defaultAdvertisedEndpointKey);
   // Only the desktop shell advertises endpoints; the web client pairs against its own origin.
   const networkAccess = useEnvironmentQuery(
     window.desktopBridge !== undefined ? desktopNetworkAccessStateAtom : null,
   );
   const link =
-    credential === null
+    created === null
       ? null
       : resolveThreadInviteLink({
-          credential,
+          credential: created.credential,
           endpoints: networkAccess.data?.advertisedEndpoints ?? [],
           defaultEndpointKey,
           currentHref: window.location.href,
@@ -113,12 +133,16 @@ function ThreadInviteDialog({ request }: { readonly request: Request }) {
     if (!label) return;
     setIsCreating(true);
     try {
-      const created = await createServerPairingCredential({
+      const result = await createServerPairingCredential({
         label,
         threadId: request.threadRef.threadId,
         scopes: AuthStandardClientScopes,
+        ttlMinutes: threadInviteTtlMinutes(ttl),
       });
-      setCredential(created.credential);
+      setCreated({
+        credential: result.credential,
+        expiresAt: DateTime.toDate(result.expiresAt),
+      });
     } catch (error) {
       toastManager.add(
         stackedThreadToast({
@@ -140,7 +164,7 @@ function ThreadInviteDialog({ request }: { readonly request: Request }) {
       }}
     >
       <DialogPopup className="sm:max-w-md">
-        {link === null ? (
+        {created === null || link === null ? (
           <form
             className="flex min-h-0 flex-col"
             onSubmit={(event) => {
@@ -171,6 +195,27 @@ function ThreadInviteDialog({ request }: { readonly request: Request }) {
                   Shown as the author on their messages.
                 </p>
               </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${id}-ttl`}>Link expires in</Label>
+                <Select
+                  value={ttl}
+                  disabled={isCreating}
+                  onValueChange={(value) => {
+                    if (typeof value === "string" && isThreadInviteTtlOption(value)) setTtl(value);
+                  }}
+                >
+                  <SelectTrigger id={`${id}-ttl`} size="sm" className="w-full">
+                    <SelectValue>{THREAD_INVITE_TTL_LABELS[ttl]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectPopup alignItemWithTrigger={false}>
+                    {THREAD_INVITE_TTL_OPTIONS.map((option) => (
+                      <SelectItem key={option} hideIndicator value={option}>
+                        {THREAD_INVITE_TTL_LABELS[option]}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              </div>
             </DialogPanel>
             <DialogFooter>
               <Button type="button" variant="outline" disabled={isCreating} onClick={close}>
@@ -186,7 +231,8 @@ function ThreadInviteDialog({ request }: { readonly request: Request }) {
             <DialogHeader>
               <DialogTitle>Invite ready</DialogTitle>
               <DialogDescription>
-                Send this link to {name.trim()}. It works once and expires if unused.
+                Send this link to {name.trim()}. It works once and expires{" "}
+                {expiresAtFormatter.format(created.expiresAt)} if unused.
               </DialogDescription>
             </DialogHeader>
             <DialogPanel>

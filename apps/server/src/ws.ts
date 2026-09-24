@@ -187,6 +187,7 @@ import * as RelayClient from "@t3tools/shared/relayClient";
 const isOrchestrationDispatchCommandError = Schema.is(OrchestrationDispatchCommandError);
 
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
 
 const resolveDiscoveryForConfig = <A, E, R>(
@@ -2046,8 +2047,7 @@ const makeWsRpcLayer = (
               return result;
             }).pipe(
               Effect.mapError((cause) =>
-                isOrchestrationDispatchCommandError(cause) ||
-                Schema.is(EnvironmentAuthorizationError)(cause)
+                isOrchestrationDispatchCommandError(cause) || isEnvironmentAuthorizationError(cause)
                   ? cause
                   : new OrchestrationDispatchCommandError({
                       message: "Failed to dispatch orchestration command",
@@ -3974,6 +3974,41 @@ export const websocketRpcRouteLayer = Layer.unwrap(
     });
     const pullRequests = yield* PullRequestService.PullRequestService;
     const sql = yield* SqlClient.SqlClient;
+    const arrivalSessions = yield* SessionStore.SessionStore;
+    const arrivalEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+    const arrivalCrypto = yield* Crypto.Crypto;
+    // Posts "<name> joined the thread" once, on a thread guest's first ever
+    // connection. Best effort: a failed announcement never blocks the socket.
+    const announceThreadGuestArrival = (sessionId: AuthSessionId, threadId: ThreadId) =>
+      Effect.gen(function* () {
+        const active = yield* arrivalSessions.listActive();
+        const clientSession = active.find((entry) => entry.sessionId === sessionId);
+        if (!clientSession || clientSession.lastConnectedAt !== null) {
+          return;
+        }
+        const author = resolveMessageAuthor({ session: clientSession, ownerName: null });
+        const createdAt = yield* nowIso;
+        const uuid = yield* arrivalCrypto.randomUUIDv4;
+        yield* arrivalEngine.dispatch({
+          type: "thread.activity.append",
+          commandId: CommandId.make(`server:thread-guest-arrived:${uuid}`),
+          threadId,
+          activity: {
+            id: EventId.make(uuid),
+            tone: "info",
+            kind: "participant.joined",
+            summary: `${author.name} joined the thread`,
+            payload: { author },
+            turnId: null,
+            createdAt,
+          },
+          createdAt,
+        });
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("failed to announce thread guest arrival", { sessionId, cause }),
+        ),
+      );
     return HttpRouter.add(
       "GET",
       "/ws",
@@ -3995,6 +4030,11 @@ export const websocketRpcRouteLayer = Layer.unwrap(
         );
         const clientOrigin = readClientConnectionOrigin(request);
         const clientAnalyticsProps = readClientAnalyticsProps(request);
+        // A guest's first connection is their arrival: tell everyone in the
+        // thread. Reconnects are silent, so read the row before it is marked.
+        if (session.threadId !== undefined) {
+          yield* announceThreadGuestArrival(session.sessionId, session.threadId);
+        }
         yield* sessions.recordClientConnection(session.sessionId, clientOrigin);
         yield* analytics.record("client.connected", clientAnalyticsProps);
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {

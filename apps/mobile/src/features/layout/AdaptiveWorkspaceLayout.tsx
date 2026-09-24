@@ -46,6 +46,7 @@ import {
 } from "../../lib/adaptive-navigation";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import { mobilePreferencesAtom } from "../../state/preferences";
+import { useGuestOnlyEnvironments } from "../../state/thread-guest";
 import {
   DEFAULT_MOBILE_PROJECT_GROUPING_SETTINGS,
   resolveMobileProjectGroupingSettings,
@@ -422,6 +423,7 @@ function AdaptiveWorkspaceLayoutContent(
     });
   }, [navigation]);
 
+  const guestOnly = useGuestOnlyEnvironments();
   const handleStartNewTask = useCallback(() => {
     navigation.navigate("NewTaskSheet", { screen: "NewTask" });
   }, [navigation]);
@@ -590,7 +592,10 @@ function AdaptiveWorkspaceLayoutContent(
                     />
                   )}
                 >
-                  <AndroidHomeFabLayout sidebar onStartNewTask={handleStartNewTask}>
+                  <AndroidHomeFabLayout
+                    sidebar
+                    onStartNewTask={guestOnly ? undefined : handleStartNewTask}
+                  >
                     <ThreadNavigationSidebar
                       width={layout.listPaneWidth}
                       visible={panes.primarySidebarVisible}

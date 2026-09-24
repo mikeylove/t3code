@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { AuthAdministrativeScopes, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
@@ -649,5 +650,19 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
           }),
         ),
       ),
+  );
+
+  it.effect("honors a requested pairing link lifetime so a link can be shared later", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const before = yield* DateTime.now;
+      const dayLong = yield* serverAuth.issuePairingCredential({ ttlMinutes: 24 * 60 });
+      const quick = yield* serverAuth.issuePairingCredential();
+      const dayLongMs = dayLong.expiresAt.epochMilliseconds - before.epochMilliseconds;
+      const quickMs = quick.expiresAt.epochMilliseconds - before.epochMilliseconds;
+      expect(dayLongMs).toBeGreaterThan(23 * 60 * 60 * 1000);
+      expect(dayLongMs).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 60_000);
+      expect(quickMs).toBeLessThanOrEqual(5 * 60 * 1000 + 60_000);
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 });

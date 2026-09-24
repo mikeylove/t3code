@@ -12,6 +12,7 @@ const baseState: ThreadActionMenuState = {
   isRegeneratingTitle: false,
   isRunning: false,
   canInvite: false,
+  isGuest: false,
   supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: true },
   snoozePresets: [
     { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
@@ -129,6 +130,14 @@ describe("buildThreadActionMenuItems", () => {
     const inviteIndex = items.findIndex((item) => item.id === "invite");
     expect(items[inviteIndex]).toMatchObject({ label: "Invite…", icon: "user-plus" });
     expect(items[inviteIndex + 1]?.id).toBe("copy");
+  });
+
+  it("offers a thread guest only mark-unread and copy", () => {
+    const guest = { ...baseState, isGuest: true, canInvite: true, branch: "feat/menu" };
+    expect(ids(guest)).toEqual(["mark-unread", "copy"]);
+    // No workspace path: the owner's filesystem is not the guest's business.
+    expect(allIds(guest)).toEqual(["mark-unread", "copy", "copy-branch", "copy-thread-id"]);
+    expect(allIds({ ...guest, branch: null })).toEqual(["mark-unread", "copy", "copy-thread-id"]);
   });
 
   it("disables archive while the thread is running", () => {

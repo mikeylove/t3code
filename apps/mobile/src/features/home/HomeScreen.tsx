@@ -13,6 +13,7 @@ import {
   type EnvironmentId,
   resolveEnvironmentMachineKind,
   type SidebarProjectGroupingMode,
+  type ThreadId,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
@@ -52,6 +53,7 @@ import {
   type ThreadListV2ListItem,
 } from "../threads/threadListV2";
 import { useThreadListV2ShelfPreferences } from "../threads/use-thread-list-v2-shelf-preferences";
+import { excludeGuestEnvironments } from "./home-guest-mode";
 import type { HomeListFilterMenuEnvironment } from "./home-list-filter-menu";
 import {
   buildHomeProjectScopes,
@@ -72,6 +74,8 @@ interface HomeScreenProps {
   readonly environments: ReadonlyArray<
     HomeListFilterMenuEnvironment & Pick<WorkspaceEnvironment, "connectionState">
   >;
+  /** Environments this client is a thread guest on: their rows are read-only and unsearchable. */
+  readonly guestThreadIds: ReadonlyMap<EnvironmentId, ThreadId>;
   readonly searchQuery: string;
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly selectedProjectKey: string | null;
@@ -216,18 +220,21 @@ export function HomeScreen(props: HomeScreenProps) {
       : 0;
   const searchEnvironmentIds = useMemo(
     () =>
-      props.selectedEnvironmentId === null
-        ? props.environments
-            .filter((environment) => environment.connectionState === "connected")
-            .map((environment) => environment.environmentId)
-        : props.environments.some(
-              (environment) =>
-                environment.environmentId === props.selectedEnvironmentId &&
-                environment.connectionState === "connected",
-            )
-          ? [props.selectedEnvironmentId]
-          : [],
-    [props.environments, props.selectedEnvironmentId],
+      excludeGuestEnvironments(
+        props.selectedEnvironmentId === null
+          ? props.environments
+              .filter((environment) => environment.connectionState === "connected")
+              .map((environment) => environment.environmentId)
+          : props.environments.some(
+                (environment) =>
+                  environment.environmentId === props.selectedEnvironmentId &&
+                  environment.connectionState === "connected",
+              )
+            ? [props.selectedEnvironmentId]
+            : [],
+        props.guestThreadIds,
+      ),
+    [props.environments, props.guestThreadIds, props.selectedEnvironmentId],
   );
   const threadSearch = useThreadSearch(searchEnvironmentIds, props.searchQuery);
   const threadSearchMatchByKey = useMemo(() => {
@@ -689,6 +696,7 @@ export function HomeScreen(props: HomeScreenProps) {
           onNewThreadOnBranch={props.onNewThreadOnBranch}
           thread={thread}
           variant={item.item.variant}
+          readOnly={props.guestThreadIds.has(thread.environmentId)}
           hasQueuedMessages={item.hasQueuedMessages}
           snoozed={item.item.snoozed}
           pinned={item.item.pinned}
@@ -767,6 +775,7 @@ export function HomeScreen(props: HomeScreenProps) {
       props.onSelectPendingTask,
       props.onSelectThread,
       props.onNewThreadOnBranch,
+      props.guestThreadIds,
       props.savedConnectionsById,
       resolveProviderInstance,
       settlementEnvironmentIds,

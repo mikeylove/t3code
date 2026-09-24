@@ -37,6 +37,7 @@ import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
+import { useThreadGuestScope } from "~/hooks/useThreadGuest";
 import { readLocalApi } from "~/localApi";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -195,6 +196,9 @@ export const ChatHeader = memo(function ChatHeader({
   );
   if (!actionsCollapsed && actionsOpen) setActionsOpen(false);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  // A thread guest reads the header but cannot act from it: no new thread,
+  // rename, scripts, editors, or git.
+  const { isGuest } = useThreadGuestScope();
   const activeProjectName = activeProject?.title;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const fileScripts = useT3ProjectFileScripts(
@@ -304,13 +308,14 @@ export const ChatHeader = memo(function ChatHeader({
   const handleTitleDoubleClick = useCallback(
     (event: ReactMouseEvent) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (isGuest) return;
       // The chevron is the explicit menu affordance; only the title text renames.
       if ((event.target as HTMLElement).closest("[data-thread-title-chevron]") !== null) return;
       cancelPendingTitleMenu();
       closeMenu();
       startRename();
     },
-    [cancelPendingTitleMenu, closeMenu, startRename],
+    [cancelPendingTitleMenu, closeMenu, isGuest, startRename],
   );
   const handleHeaderContextMenu = useCallback(
     (event: ReactMouseEvent) => {
@@ -351,7 +356,7 @@ export const ChatHeader = memo(function ChatHeader({
     },
     [commitRename],
   );
-  const headerActions = (
+  const headerActions = isGuest ? null : (
     <>
       {activeProjectScripts && (
         <>
@@ -410,24 +415,33 @@ export const ChatHeader = memo(function ChatHeader({
         {activeProject ? (
           <>
             <WorkspaceBreadcrumbItem className="shrink">
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <button
-                      type="button"
-                      aria-label={`New thread in ${activeProjectName}`}
-                      onClick={onNewThreadInProject}
-                      className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-                    />
-                  }
-                >
+              {isGuest ? (
+                <span className="inline-flex min-w-0 max-w-full items-center gap-1.5 text-muted-foreground">
                   <ProjectFavicon project={activeProject} className="size-3.5" />
                   <WorkspaceBreadcrumbText className="max-w-40">
                     {activeProjectName}
                   </WorkspaceBreadcrumbText>
-                </TooltipTrigger>
-                <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
-              </Tooltip>
+                </span>
+              ) : (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <button
+                        type="button"
+                        aria-label={`New thread in ${activeProjectName}`}
+                        onClick={onNewThreadInProject}
+                        className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                      />
+                    }
+                  >
+                    <ProjectFavicon project={activeProject} className="size-3.5" />
+                    <WorkspaceBreadcrumbText className="max-w-40">
+                      {activeProjectName}
+                    </WorkspaceBreadcrumbText>
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
+                </Tooltip>
+              )}
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>
               <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
@@ -501,6 +515,7 @@ export const ChatHeader = memo(function ChatHeader({
         <Menu open={actionsCollapsed && actionsOpen} onOpenChange={setActionsOpen}>
           <MenuTrigger
             className={
+              !isGuest &&
               actionsCollapsed &&
               (activeProjectScripts || showOpenInPicker || (activeProjectName && gitCwd))
                 ? undefined

@@ -26,6 +26,7 @@ import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import type { MediaVideoPreviewSource } from "../../lib/videoPreviewSource";
 import { useMediaActions, type MediaActionsSource } from "../../lib/mediaActions";
 import { useThreadSelection } from "../../state/use-thread-selection";
+import { useGuestRouteGuard } from "../../state/thread-guest";
 import { useSelectedThreadWorktree } from "../../state/use-selected-thread-worktree";
 import { useEnvironmentQuery } from "../../state/query";
 import { projectEnvironment } from "../../state/projects";
@@ -420,6 +421,7 @@ export function ThreadFilesTreeScreen(props: ThreadFilesRouteScreenProps) {
   const { cwd, environmentId, projectName, selectedThread, threadId } = useThreadFilesWorkspace(
     props.route.params,
   );
+  useGuestRouteGuard(environmentId);
   const revealedInspectorRef = useRef(false);
   const entriesQuery = useFileTreeEntries({
     environmentId,
@@ -568,6 +570,7 @@ export function ThreadFileScreen(props: ThreadFileRouteScreenProps) {
   const { cwd, environmentId, projectName, selectedThread, threadId } = useThreadFilesWorkspace(
     props.route.params,
   );
+  useGuestRouteGuard(environmentId);
   const [modeOverride, setModeOverride] = useState<{
     readonly path: string;
     readonly mode: FileViewMode;

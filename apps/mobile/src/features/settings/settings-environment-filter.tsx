@@ -5,16 +5,24 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from "re
 import { useEnvironments, type EnvironmentPresentation } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
+import { useGuestThreadIds } from "../../state/thread-guest";
 import { toggleSettingsEnvironment } from "./settings-environment-filter.logic";
 
 export type SettingsTarget = EnvironmentPresentation & {
   readonly serverConfig: NonNullable<EnvironmentPresentation["serverConfig"]>;
 };
 
-function connectedSettingsTargets(environments: readonly EnvironmentPresentation[]) {
+// A thread guest cannot read or write server settings, so its environment is
+// never a settings target even while connected.
+function connectedSettingsTargets(
+  environments: readonly EnvironmentPresentation[],
+  guestEnvironmentIds: ReadonlySet<EnvironmentId>,
+) {
   return environments.filter(
     (entry): entry is SettingsTarget =>
-      entry.connection.phase === "connected" && entry.serverConfig !== null,
+      entry.connection.phase === "connected" &&
+      entry.serverConfig !== null &&
+      !guestEnvironmentIds.has(entry.environmentId),
   );
 }
 
@@ -32,6 +40,7 @@ const SettingsEnvironmentFilterContext = createContext<{
 
 export function SettingsEnvironmentFilterProvider(props: { readonly children: ReactNode }) {
   const { environments } = useEnvironments();
+  const guestThreadIds = useGuestThreadIds();
   const projects = useProjects();
   const groupingSettings = useMobileProjectGroupingSettings();
   const groupingMode = groupingSettings.sidebarProjectGroupingMode;
@@ -45,7 +54,10 @@ export function SettingsEnvironmentFilterProvider(props: { readonly children: Re
       }),
     [projects, groupingMode],
   );
-  const availableTargets = useMemo(() => connectedSettingsTargets(environments), [environments]);
+  const availableTargets = useMemo(
+    () => connectedSettingsTargets(environments, new Set(guestThreadIds.keys())),
+    [environments, guestThreadIds],
+  );
   const selectedTargets = useMemo(
     () =>
       availableTargets.filter(

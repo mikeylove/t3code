@@ -1,4 +1,4 @@
-import { AuthOrchestrationOperateScope, ServerProvider } from "@t3tools/contracts";
+import { AuthOrchestrationOperateScope, ServerProvider, ThreadId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -48,6 +48,9 @@ describe("environment maintenance access", () => {
     expect(canMaintainEnvironment(session, false)).toBe(false);
     expect(canMaintainEnvironment({ ...session, authenticated: false }, true)).toBe(false);
     expect(canMaintainEnvironment({ ...session, scopes: [] }, true)).toBe(false);
+    expect(
+      canMaintainEnvironment({ ...session, threadId: ThreadId.make("thread-guest") }, true),
+    ).toBe(false);
     const { scopes: _, ...legacy } = session;
     expect(canMaintainEnvironment(legacy, true)).toBe(false);
     expect(canMaintainEnvironment(null, true)).toBe(false);

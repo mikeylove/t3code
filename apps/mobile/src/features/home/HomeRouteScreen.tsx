@@ -1,7 +1,7 @@
 import * as Arr from "effect/Array";
 import * as Order from "effect/Order";
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Platform, useWindowDimensions } from "react-native";
 
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
@@ -9,6 +9,7 @@ import { useProjects, useThreadShells } from "../../state/entities";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
+import { useGuestThreadIds } from "../../state/thread-guest";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { WorkspaceEmptyDetail } from "../layout/WorkspaceEmptyDetail";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
@@ -16,6 +17,7 @@ import { checkForAppUpdateOnLaunch, startAppUpdateForegroundRecheck } from "../u
 import { AndroidHomeFabLayout } from "./AndroidHomeFab";
 import { HomeScreen } from "./HomeScreen";
 import { HomeHeader } from "./HomeHeader";
+import { resolveHomeGuestMode } from "./home-guest-mode";
 import { useHomeListOptions } from "./home-list-options";
 import { useHomeThreadSelection } from "./home-thread-navigation";
 import { buildHomeProjectScopes } from "./homeThreadList";
@@ -79,6 +81,25 @@ export function HomeRouteScreen() {
   const { options: listOptions, setSelectedEnvironmentId } =
     useHomeListOptions(availableEnvironmentIds);
   const selectedEnvironmentId = listOptions.selectedEnvironmentId;
+  const guestThreadIds = useGuestThreadIds();
+  const { guestOnly, landingThread } = resolveHomeGuestMode({
+    selectedEnvironmentId,
+    environmentIds: environments.map((environment) => environment.environmentId),
+    guestThreadIds,
+  });
+  // A guest's whole environment is one conversation: open it instead of a
+  // one-row list. Once per thread, so backing out to Home stays possible.
+  const landedThreadKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (landingThread === null) return;
+    const key = `${landingThread.environmentId}:${landingThread.threadId}`;
+    if (landedThreadKeyRef.current === key) return;
+    landedThreadKeyRef.current = key;
+    navigation.navigate("Thread", {
+      environmentId: String(landingThread.environmentId),
+      threadId: String(landingThread.threadId),
+    });
+  }, [landingThread, navigation]);
   const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(null);
   const projectFilterOptions = useMemo(
     () =>
@@ -113,7 +134,7 @@ export function HomeRouteScreen() {
               : { title: "", headerTitle: "", unstable_headerLeftItems: () => [] }
           }
         />
-        {Platform.OS === "ios" ? (
+        {Platform.OS === "ios" && !guestOnly ? (
           <NativeHeaderToolbar placement="left">
             <NativeHeaderToolbar.Button
               accessibilityLabel="New task"
@@ -134,7 +155,7 @@ export function HomeRouteScreen() {
               : undefined
           }
           onStartNewTask={
-            Platform.OS === "android" && panes.primarySidebarVisible
+            guestOnly || (Platform.OS === "android" && panes.primarySidebarVisible)
               ? undefined
               : () => navigation.navigate("NewTaskSheet", { screen: "NewTask" })
           }
@@ -145,7 +166,9 @@ export function HomeRouteScreen() {
 
   return (
     <AndroidHomeFabLayout
-      onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
+      onStartNewTask={
+        guestOnly ? undefined : () => navigation.navigate("NewTaskSheet", { screen: "NewTask" })
+      }
     >
       <>
         {/* Restore the header after leaving split view; screen options are
@@ -167,6 +190,7 @@ export function HomeRouteScreen() {
         />
         <HomeHeader
           environments={environments}
+          guestOnly={guestOnly}
           projects={projectFilterOptions}
           searchQuery={searchQuery}
           selectedEnvironmentId={selectedEnvironmentId}
@@ -192,6 +216,7 @@ export function HomeRouteScreen() {
         <HomeScreen
           catalogState={catalogState}
           environments={environments}
+          guestThreadIds={guestThreadIds}
           onAddConnection={() =>
             navigation.navigate("SettingsSheet", {
               screen: "SettingsContent",

@@ -877,6 +877,7 @@ export const make = Effect.gen(function* () {
     readonly label?: string;
     readonly threadId?: ThreadId;
     readonly purpose?: "startup";
+    readonly ttl?: Duration.Duration;
   }) =>
     createPairingLink({
       scopes: input.scopes,
@@ -884,6 +885,7 @@ export const make = Effect.gen(function* () {
       ...(input.label ? { label: input.label } : {}),
       ...(input.threadId ? { threadId: input.threadId } : {}),
       ...(input.purpose ? { purpose: input.purpose } : {}),
+      ...(input.ttl ? { ttl: input.ttl } : {}),
     }).pipe(
       Effect.map(
         (issued) =>
@@ -1002,6 +1004,7 @@ export const make = Effect.gen(function* () {
       subject: "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
       ...(input?.threadId ? { threadId: input.threadId } : {}),
+      ...(input?.ttlMinutes !== undefined ? { ttl: Duration.minutes(input.ttlMinutes) } : {}),
     }).pipe(Effect.withSpan("EnvironmentAuth.issuePairingCredential"));
 
   const issueStartupPairingCredential: EnvironmentAuth["Service"]["issueStartupPairingCredential"] =

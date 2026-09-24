@@ -37,6 +37,7 @@ import {
 import { tryOpenExternalUrl } from "../../../lib/openExternalUrl";
 import { useEnvironmentQuery } from "../../../state/query";
 import { useThreadSelection } from "../../../state/use-thread-selection";
+import { useGuestRouteGuard } from "../../../state/thread-guest";
 import { useSelectedThreadGitActions } from "../../../state/use-selected-thread-git-actions";
 import { useSelectedThreadGitState } from "../../../state/use-selected-thread-git-state";
 import { useSelectedThreadWorktree } from "../../../state/use-selected-thread-worktree";
@@ -62,6 +63,7 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
   const isInspector = presentation === "inspector";
   const environmentId = EnvironmentId.make(props.route.params.environmentId);
   const threadId = ThreadId.make(props.route.params.threadId);
+  const guest = useGuestRouteGuard(environmentId);
   const { selectedThread, selectedEnvironmentRuntime } = useThreadSelection();
   const { selectedThreadCwd, selectedThreadWorktreePath } = useSelectedThreadWorktree();
   const supportsLinkedPrSnapshots =
@@ -73,8 +75,8 @@ export function GitOverviewSheet(props: GitOverviewSheetProps) {
       ),
     [selectedThread?.pullRequests, supportsLinkedPrSnapshots],
   );
-  const gitState = useSelectedThreadGitState();
-  const gitActions = useSelectedThreadGitActions();
+  const gitState = useSelectedThreadGitState({ disabled: guest });
+  const gitActions = useSelectedThreadGitActions({ disabled: guest });
   const theme = useUniwindTheme();
   const foregroundColor = theme["--color-foreground"];
   const sheetColor = theme["--color-sheet"];

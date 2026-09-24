@@ -26,6 +26,7 @@ import { resolveThreadRouteRef } from "../threadRoutes";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { useEnvironmentIdentificationMode, useLegacySidebarEnabled } from "../hooks/useSettings";
+import { useThreadGuestScope } from "../hooks/useThreadGuest";
 import {
   PanelAnimationSuppressionProvider,
   usePanelAnimationSettings,
@@ -214,7 +215,9 @@ function ProjectProjectionRetention() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
-  const legacySidebarEnabled = useLegacySidebarEnabled();
+  // Guest mode is only taught to the default sidebar; a guest's client-local
+  // legacy preference cannot opt them back into owner controls.
+  const legacySidebarEnabled = useLegacySidebarEnabled() && !useThreadGuestScope().isGuest;
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
   // Settings routes show the settings nav in place of whichever thread

@@ -481,6 +481,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   readonly selected?: boolean;
   /** Override for narrow panes (iPad sidebar); defaults to window width. */
   readonly fullSwipeWidth?: number;
+  /** Thread guest row: opens the thread and nothing else (no swipe actions, menu, or PR lookups). */
+  readonly readOnly?: boolean;
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
   readonly onDeleteThread: (thread: EnvironmentThreadShell) => void;
   readonly onNewThreadOnBranch: (thread: EnvironmentThreadShell) => void;
@@ -541,7 +543,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
   const snoozedRow = props.snoozed === true;
   const pinnedRow = props.pinned === true;
 
-  const pr = useThreadPr(thread);
+  const readOnly = props.readOnly === true;
+  const pr = useThreadPr(thread, { enabled: !readOnly });
 
   const theme = useUniwindTheme();
   const sidebarPane = props.pane === "sidebar";
@@ -1122,6 +1125,10 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
         </View>
       </RowPressable>
     );
+
+  if (readOnly) {
+    return <View collapsable={false}>{rowContent(() => {})}</View>;
+  }
 
   return (
     <View collapsable={false}>

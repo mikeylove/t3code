@@ -344,10 +344,20 @@ export const AuthRevokeClientSessionInput = Schema.Struct({
 });
 export type AuthRevokeClientSessionInput = typeof AuthRevokeClientSessionInput.Type;
 
+/** Longest a pairing link may stay unclaimed: one week, for links shared out of band. */
+export const MAX_PAIRING_CREDENTIAL_TTL_MINUTES = 7 * 24 * 60;
+
 export const AuthCreatePairingCredentialInput = Schema.Struct({
   label: Schema.optionalKey(TrimmedNonEmptyString),
   scopes: Schema.optionalKey(AuthEnvironmentScopes),
   threadId: Schema.optionalKey(ThreadId),
+  /**
+   * How long the one-time link stays claimable, in minutes. Defaults to the
+   * server's short QR-code lifetime; a link pasted into chat needs longer.
+   */
+  ttlMinutes: Schema.optionalKey(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: MAX_PAIRING_CREDENTIAL_TTL_MINUTES })),
+  ),
 });
 export type AuthCreatePairingCredentialInput = typeof AuthCreatePairingCredentialInput.Type;
 

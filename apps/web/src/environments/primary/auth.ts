@@ -359,6 +359,7 @@ export async function createServerPairingCredential(input?: {
   readonly label?: string;
   readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
   readonly threadId?: ThreadId;
+  readonly ttlMinutes?: number;
 }): Promise<AuthPairingCredentialResult> {
   const trimmedLabel = input?.label?.trim();
   try {
@@ -371,6 +372,7 @@ export async function createServerPairingCredential(input?: {
               ...(trimmedLabel ? { label: trimmedLabel } : {}),
               ...(input?.scopes ? { scopes: input.scopes } : {}),
               ...(input?.threadId ? { threadId: input.threadId } : {}),
+              ...(input?.ttlMinutes !== undefined ? { ttlMinutes: input.ttlMinutes } : {}),
             },
           }),
         ),

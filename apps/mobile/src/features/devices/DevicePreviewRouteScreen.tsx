@@ -15,6 +15,7 @@ import { AppText } from "../../components/AppText";
 import { ScreenHeader, type ScreenHeaderMenuItem } from "../../components/ScreenHeader";
 import { NativeHeaderToolbar } from "../../native/StackHeader";
 import { deviceEnvironment, refreshDeviceHubAccess, useDeviceHubAccess } from "../../state/device";
+import { useGuestRouteGuard } from "../../state/thread-guest";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAppearancePreferences } from "../settings/appearance/AppearancePreferencesProvider";
@@ -35,6 +36,7 @@ type DevicePreviewRouteScreenProps = StaticScreenProps<{
 /** The nested native stack supplies the navigation bar inside the modal. */
 export function DevicePreviewRouteScreen({ route }: DevicePreviewRouteScreenProps) {
   const navigation = useNavigation();
+  useGuestRouteGuard(EnvironmentId.make(route.params.environmentId));
   const onClose = useCallback(() => navigation.goBack(), [navigation]);
   return (
     <View collapsable={false} className="flex-1 bg-sheet">

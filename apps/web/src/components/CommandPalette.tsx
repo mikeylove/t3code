@@ -74,6 +74,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
+import { useThreadGuestScope } from "../hooks/useThreadGuest";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { useClientSettings } from "../hooks/useSettings";
@@ -143,6 +144,7 @@ import {
   buildProjectActionItems,
   buildRootGroups,
   buildThreadActionItems,
+  filterCommandPaletteActionItemsForThreadGuest,
   buildLinkedThreadActionItems,
   enumerateCommandPaletteItems,
   type CommandPaletteActionItem,
@@ -484,6 +486,9 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const clearOpenIntent = useCallback(() => dispatch({ _tag: "ClearOpenIntent" }), []);
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { theme, themeHalves, resolvedTheme, appearanceMode, setAppearanceMode } = useTheme();
+  // File picker and content search read the project tree, which the server
+  // denies a thread guest; only the command mode stays reachable.
+  const { isGuest } = useThreadGuestScope();
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
   const routeTarget = useParams({
     strict: false,
@@ -562,7 +567,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         return;
       }
       const mode = overlayModeForCommand(command);
-      if (mode === null) {
+      if (mode === null || (isGuest && mode !== "command")) {
         return;
       }
       event.preventDefault();
@@ -573,6 +578,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
     appearanceMode,
+    isGuest,
     keybindings,
     previewOpen,
     resolvedTheme,
@@ -712,6 +718,7 @@ function OpenCommandPaletteDialog(props: {
     reportFailure: false,
   });
   const { environments } = useEnvironments();
+  const { isGuest } = useThreadGuestScope();
   const desktopLocalBootstraps = useDesktopLocalBootstraps();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const availableSettingsSearchItems = useAvailableSettingsSearchItems();
@@ -2077,7 +2084,10 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  const rootGroups = buildRootGroups({ actionItems, recentThreadItems });
+  const rootGroups = buildRootGroups({
+    actionItems: isGuest ? filterCommandPaletteActionItemsForThreadGuest(actionItems) : actionItems,
+    recentThreadItems,
+  });
   const settingsSearchItems: CommandPaletteActionItem[] = searchSettings(
     deferredQuery,
     availableSettingsSearchItems,
@@ -2118,8 +2128,9 @@ function OpenCommandPaletteDialog(props: {
     activeGroups,
     query: deferredQuery,
     isInSubmenu: currentView !== null,
-    projectSearchItems: projectSearchItems,
-    settingsSearchItems,
+    // Project and settings pages are owner surfaces; a guest is redirected off them anyway.
+    projectSearchItems: isGuest ? [] : projectSearchItems,
+    settingsSearchItems: isGuest ? [] : settingsSearchItems,
     threadSearchItems:
       linkedThreadSearch?.linkedThreads && deferredQuery === linkedThreadSearch.query
         ? buildLinkedThreadActionItems({

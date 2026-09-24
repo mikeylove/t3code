@@ -4,6 +4,7 @@ import { memo, useCallback } from "react";
 import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { useEnvironmentIdentificationMode } from "../../hooks/useSettings";
+import { useThreadGuestScope } from "../../hooks/useThreadGuest";
 import { cn } from "../../lib/utils";
 import { useEnvironments } from "../../state/environments";
 import { T3Wordmark } from "../T3Wordmark";
@@ -220,12 +221,19 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
 });
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
+  // Settings, usage, pull requests and updates are the owner's; a thread
+  // guest's footer carries nothing to navigate to.
+  const { isGuest } = useThreadGuestScope();
   return (
     <SidebarFooter>
       <SidebarThreadUndoNotice />
-      <SidebarProviderUpdatePill />
-      <SidebarUpdateArchitectureWarning />
-      <SidebarUtilityMenu />
+      {isGuest ? null : (
+        <>
+          <SidebarProviderUpdatePill />
+          <SidebarUpdateArchitectureWarning />
+          <SidebarUtilityMenu />
+        </>
+      )}
     </SidebarFooter>
   );
 });

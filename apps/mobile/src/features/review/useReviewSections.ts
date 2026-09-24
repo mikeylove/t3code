@@ -28,13 +28,21 @@ export function useReviewSections(input: {
   readonly environmentId?: EnvironmentId;
   readonly threadId?: ThreadId;
   readonly reviewCache: ReviewCacheForThread;
+  /**
+   * Thread guest: turn diffs only. The server denies `review.getDiffPreview`
+   * to guests, so the working-tree and branch sections are never requested
+   * or shown; turn diffs (`orchestration.getTurnDiff` / `getFullThreadDiff`)
+   * are allowed and stay.
+   */
+  readonly guest?: boolean;
 }) {
   const { environmentId, reviewCache, threadId } = input;
   const enabled = input.enabled ?? true;
+  const guest = input.guest === true;
   const selectedThread = useSelectedThreadDetail();
   const { selectedThreadCwd } = useSelectedThreadWorktree();
   const diffPreview = useEnvironmentQuery(
-    enabled && environmentId !== undefined && selectedThreadCwd !== null
+    enabled && !guest && environmentId !== undefined && selectedThreadCwd !== null
       ? reviewEnvironment.diffPreview({
           environmentId,
           input: { cwd: selectedThreadCwd },
@@ -67,14 +75,15 @@ export function useReviewSections(input: {
     () =>
       buildReviewSectionItems({
         checkpoints: readyCheckpoints,
-        gitSections: diffPreview.data?.sources ?? reviewCache.gitSections,
+        gitSections: guest ? [] : (diffPreview.data?.sources ?? reviewCache.gitSections),
         turnDiffById: reviewCache.turnDiffById,
         loadingTurnIds,
-        loadingGitSections: diffPreview.isPending,
+        loadingGitSections: !guest && diffPreview.isPending,
       }),
     [
       diffPreview.isPending,
       diffPreview.data?.sources,
+      guest,
       loadingTurnIds,
       readyCheckpoints,
       reviewCache.gitSections,

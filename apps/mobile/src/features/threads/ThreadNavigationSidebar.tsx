@@ -33,12 +33,14 @@ import { useThreadListV2ShelfPreferences } from "./use-thread-list-v2-shelf-pref
 import { usePendingThreadOrder } from "../../state/thread-order";
 import { environmentServerConfigsAtom } from "../../state/server";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
+import { useGuestThreadIds } from "../../state/thread-guest";
 import { useQueuedThreadKeys } from "../../state/use-thread-outbox";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
 import { useHomeListOptions } from "../home/home-list-options";
+import { excludeGuestEnvironments, resolveHomeGuestMode } from "../home/home-guest-mode";
 import { buildHomeListFilterMenu } from "../home/home-list-filter-menu";
 import { buildHomeProjectScopes } from "../home/homeThreadList";
 import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
@@ -172,20 +174,29 @@ function ThreadNavigationSidebarPane(
     [environments],
   );
   const { options, setSelectedEnvironmentId } = useHomeListOptions(availableEnvironmentIds);
+  const guestThreadIds = useGuestThreadIds();
+  const { guestOnly } = resolveHomeGuestMode({
+    selectedEnvironmentId: options.selectedEnvironmentId,
+    environmentIds: environments.map((environment) => environment.environmentId),
+    guestThreadIds,
+  });
   const searchEnvironmentIds = useMemo(
     () =>
-      options.selectedEnvironmentId === null
-        ? workspaceEnvironments
-            .filter((environment) => environment.connectionState === "connected")
-            .map((environment) => environment.environmentId)
-        : workspaceEnvironments.some(
-              (environment) =>
-                environment.environmentId === options.selectedEnvironmentId &&
-                environment.connectionState === "connected",
-            )
-          ? [options.selectedEnvironmentId]
-          : [],
-    [options.selectedEnvironmentId, workspaceEnvironments],
+      excludeGuestEnvironments(
+        options.selectedEnvironmentId === null
+          ? workspaceEnvironments
+              .filter((environment) => environment.connectionState === "connected")
+              .map((environment) => environment.environmentId)
+          : workspaceEnvironments.some(
+                (environment) =>
+                  environment.environmentId === options.selectedEnvironmentId &&
+                  environment.connectionState === "connected",
+              )
+            ? [options.selectedEnvironmentId]
+            : [],
+        guestThreadIds,
+      ),
+    [guestThreadIds, options.selectedEnvironmentId, workspaceEnvironments],
   );
   const threadSearch = useThreadSearch(searchEnvironmentIds, props.searchQuery);
   const threadSearchMatchByKey = useMemo(() => {
@@ -729,6 +740,7 @@ function ThreadNavigationSidebarPane(
               onNewThreadOnBranch={props.onNewThreadOnBranch}
               thread={thread}
               variant={item.item.variant}
+              readOnly={guestThreadIds.has(thread.environmentId)}
               hasQueuedMessages={item.hasQueuedMessages}
               snoozed={item.item.snoozed}
               pinned={item.item.pinned}
@@ -921,23 +933,25 @@ function ThreadNavigationSidebarPane(
               onOpenEnvironments: props.onOpenEnvironmentSettings,
               fallbackTitleStyle: { fontSize: 18, fontWeight: "800" },
             }),
-            headerSearchBarOptions: {
-              ref: searchBarRef,
-              autoCapitalize: "none",
-              hideNavigationBar: false,
-              // Keep the search bar pinned under the title — UIKit's default
-              // hidesSearchBarWhenScrolling collapses it on scroll.
-              hideWhenScrolling: false,
-              obscureBackground: false,
-              placeholder: "Search",
-              placement: "stacked",
-              onCancelButtonPress: () => {
-                props.onSearchQueryChange("");
-              },
-              onChangeText: (event) => {
-                props.onSearchQueryChange(event.nativeEvent.text);
-              },
-            },
+            headerSearchBarOptions: guestOnly
+              ? undefined
+              : {
+                  ref: searchBarRef,
+                  autoCapitalize: "none",
+                  hideNavigationBar: false,
+                  // Keep the search bar pinned under the title — UIKit's default
+                  // hidesSearchBarWhenScrolling collapses it on scroll.
+                  hideWhenScrolling: false,
+                  obscureBackground: false,
+                  placeholder: "Search",
+                  placement: "stacked",
+                  onCancelButtonPress: () => {
+                    props.onSearchQueryChange("");
+                  },
+                  onChangeText: (event) => {
+                    props.onSearchQueryChange(event.nativeEvent.text);
+                  },
+                },
             unstable_headerRightItems: () => nativeHeaderItems,
           }}
         />
@@ -1048,6 +1062,7 @@ function ThreadNavigationSidebarPane(
         <MaterialThreadListToolbar
           sidebar
           onLayout={handleStickyHeaderLayout}
+          searchHidden={guestOnly}
           searchQuery={props.searchQuery}
           onSearchQueryChange={props.onSearchQueryChange}
           filterActions={listMenuActions}
@@ -1087,30 +1102,32 @@ function ThreadNavigationSidebarPane(
             </View>
           </View>
 
-          <View className="mx-4 mt-[9px] h-[38px] flex-row items-center gap-1.5 rounded-xl bg-sidebar-search pr-2.5 pl-[11px]">
-            <SymbolView
-              name="magnifyingglass"
-              size={15}
-              tintColorClassName="accent-drawer-foreground-muted"
-              type="monochrome"
-            />
-            <TextInput
-              ref={searchInputRef}
-              accessibilityLabel="Search threads"
-              autoCapitalize="none"
-              autoCorrect={false}
-              clearButtonMode="while-editing"
-              onChangeText={props.onSearchQueryChange}
-              placeholder="Search"
-              placeholderTextColorClassName="accent-placeholder"
-              selectionColorClassName={undefined}
-              cursorColorClassName={undefined}
-              selectionHandleColorClassName={undefined}
-              returnKeyType="search"
-              className="h-[34px] flex-1 px-0 py-0 font-sans text-base text-drawer-foreground"
-              value={props.searchQuery}
-            />
-          </View>
+          {guestOnly ? null : (
+            <View className="mx-4 mt-[9px] h-[38px] flex-row items-center gap-1.5 rounded-xl bg-sidebar-search pr-2.5 pl-[11px]">
+              <SymbolView
+                name="magnifyingglass"
+                size={15}
+                tintColorClassName="accent-drawer-foreground-muted"
+                type="monochrome"
+              />
+              <TextInput
+                ref={searchInputRef}
+                accessibilityLabel="Search threads"
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="while-editing"
+                onChangeText={props.onSearchQueryChange}
+                placeholder="Search"
+                placeholderTextColorClassName="accent-placeholder"
+                selectionColorClassName={undefined}
+                cursorColorClassName={undefined}
+                selectionHandleColorClassName={undefined}
+                returnKeyType="search"
+                className="h-[34px] flex-1 px-0 py-0 font-sans text-base text-drawer-foreground"
+                value={props.searchQuery}
+              />
+            </View>
+          )}
         </View>
       )}
     </View>
