@@ -386,6 +386,10 @@ describe("settings search targets", () => {
   });
 
   it("keeps environment-wide settings out of project scopes", () => {
+    expect(searchSettings("display name")[0]?.id).toBe("owner-display-name");
+    const ownerName = getSettingsSearchTargetScope("owner-display-name")!;
+    expect(ownerName.scope).toBe("environment-defaults");
+    expect(isSettingsSearchScopeAvailable(ownerName.scope, "project")).toBe(false);
     const updates = getSettingsSearchTargetScope("provider-update-checks")!;
     expect(updates.scope).toBe("environment-defaults");
     expect(isSettingsSearchScopeAvailable(updates.scope, "environment")).toBe(true);

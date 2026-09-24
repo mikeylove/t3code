@@ -100,6 +100,7 @@ import {
   cleanupFailedUploadedAttachments,
   normalizeDispatchCommand,
 } from "./orchestration/Normalizer.ts";
+import { resolveMessageAuthor } from "./orchestration/messageAuthor.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ThreadDeletionReactor } from "./orchestration/Services/ThreadDeletionReactor.ts";
@@ -1459,6 +1460,7 @@ const makeWsRpcLayer = (
                     ? { context: command.message.context }
                     : {}),
                 },
+                ...(command.author !== undefined ? { author: command.author } : {}),
                 createdAt: command.createdAt,
               });
               if (tracked) {
@@ -1876,13 +1878,51 @@ const makeWsRpcLayer = (
           .refreshStatus(cwd)
           .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
+      // Who is speaking is decided here, from the session that carried the
+      // command, never from the command body. Server-originated commands
+      // dispatched elsewhere carry no author.
+      const stampCommandAuthor = (command: OrchestrationCommand) =>
+        Effect.gen(function* () {
+          if (
+            command.type !== "thread.turn.start" &&
+            command.type !== "thread.message.user.append" &&
+            command.type !== "thread.approval.respond" &&
+            command.type !== "thread.user-input.respond"
+          ) {
+            return command;
+          }
+          const ownerName = yield* serverSettings.getSettings.pipe(
+            Effect.map((settings) => settings.ownerDisplayName),
+            Effect.orElseSucceed(() => null),
+          );
+          const activeSessions = yield* sessions.listActive().pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("failed to resolve message author; dispatching unattributed", {
+                cause,
+              }).pipe(Effect.as([])),
+            ),
+          );
+          const clientSession = activeSessions.find(
+            (entry) => entry.sessionId === currentSession.sessionId,
+          );
+          if (!clientSession) {
+            return command;
+          }
+          return {
+            ...command,
+            author: resolveMessageAuthor({ session: clientSession, ownerName }),
+          } satisfies OrchestrationCommand;
+        });
+
       return WsRpcGroup.of({
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.dispatchCommand,
             Effect.gen(function* () {
               yield* ProjectCloneTracker.rejectCommandsDuringClone(projectCloneTracker, command);
-              const normalizedCommand = yield* normalizeDispatchCommand(command);
+              const normalizedCommand = yield* stampCommandAuthor(
+                yield* normalizeDispatchCommand(command),
+              );
               // Archive removes the thread from the client, so this transport
               // closes its session and terminals after the command lands.
               // Settlement cleanup is driven by thread.settled events in the

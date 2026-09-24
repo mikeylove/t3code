@@ -1428,6 +1428,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
               ...(command.message.context !== undefined
                 ? { context: command.message.context }
                 : {}),
+              ...(command.author !== undefined ? { author: command.author } : {}),
               turnId: null,
               streaming: false,
               createdAt: command.createdAt,
@@ -1535,6 +1536,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           text: command.message.text,
           attachments: command.message.attachments,
           ...(command.message.context !== undefined ? { context: command.message.context } : {}),
+          ...(command.author !== undefined ? { author: command.author } : {}),
           turnId: null,
           streaming: false,
           createdAt: command.createdAt,
@@ -1586,6 +1588,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           requestId: command.requestId,
           decision: command.decision,
+          ...(command.author !== undefined ? { author: command.author } : {}),
           createdAt: command.createdAt,
         },
       };
@@ -1699,6 +1702,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
                 text: replies.join("\n\n"),
                 attachments,
               },
+              ...(command.author !== undefined ? { author: command.author } : {}),
             },
           ],
         });
@@ -1719,6 +1723,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           ...(command.attachmentsByQuestionId
             ? { attachmentsByQuestionId: command.attachmentsByQuestionId }
             : {}),
+          ...(command.author !== undefined ? { author: command.author } : {}),
           createdAt: command.createdAt,
         },
       };

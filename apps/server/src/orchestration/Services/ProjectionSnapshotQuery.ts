@@ -244,6 +244,8 @@ export interface ProjectionSnapshotQueryShape {
   /**
    * Read one requested message and whether another non-compaction user message exists.
    * Newer queued messages count too, preserving first-turn title eligibility.
+   * `hasOtherAuthors` is true when another user message carries a different
+   * author id; authorless messages on either side never count.
    */
   readonly getTurnStartMessage: (input: {
     readonly threadId: ThreadId;
@@ -252,6 +254,7 @@ export interface ProjectionSnapshotQueryShape {
     Option.Option<{
       readonly message: OrchestrationMessage;
       readonly hasOtherUserMessages: boolean;
+      readonly hasOtherAuthors: boolean;
     }>,
     ProjectionRepositoryError
   >;

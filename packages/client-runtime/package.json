@@ -15,6 +15,10 @@
       "types": "./src/worktreeSetup.ts",
       "default": "./src/worktreeSetup.ts"
     },
+    "./message-authors": {
+      "types": "./src/messageAuthors.ts",
+      "default": "./src/messageAuthors.ts"
+    },
     "./load-balancing": {
       "types": "./src/load-balancing.ts",
       "default": "./src/load-balancing.ts"

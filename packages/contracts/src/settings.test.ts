@@ -20,6 +20,22 @@ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
 const encodeServerSettings = Schema.encodeSync(ServerSettings);
 const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
 
+describe("owner display name", () => {
+  it("is unset until the owner chooses one", () => {
+    expect(decodeServerSettings({}).ownerDisplayName).toBeNull();
+  });
+
+  it("trims a patched name and accepts null to clear it", () => {
+    expect(decodeServerSettingsPatch({ ownerDisplayName: "  Theo " })).toEqual({
+      ownerDisplayName: "Theo",
+    });
+    expect(decodeServerSettingsPatch({ ownerDisplayName: null })).toEqual({
+      ownerDisplayName: null,
+    });
+    expect(() => decodeServerSettingsPatch({ ownerDisplayName: "   " })).toThrow();
+  });
+});
+
 describe("storage cleanup settings", () => {
   it("keeps cleanup disabled for existing installations", () => {
     expect(decodeServerSettings({}).worktreeCleanup).toBeNull();

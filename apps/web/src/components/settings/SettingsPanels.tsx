@@ -593,6 +593,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.responseStreamingMode !== DEFAULT_UNIFIED_SETTINGS.responseStreamingMode
         ? ["Response streaming"]
         : []),
+      ...(settings.ownerDisplayName !== DEFAULT_UNIFIED_SETTINGS.ownerDisplayName
+        ? ["Your name"]
+        : []),
       ...(settings.enableProviderUpdateChecks !==
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
         ? ["Provider update checks"]
@@ -670,6 +673,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.glassOpacity,
       settings.panelAnimationDurationMs,
       settings.responseStreamingMode,
+      settings.ownerDisplayName,
       settings.enableProviderUpdateChecks,
       settings.continueThreadsAfterServerUpdate,
       settings.sidebarAutoSettleAfterDays,
@@ -774,6 +778,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       responseStreamingMode: DEFAULT_UNIFIED_SETTINGS.responseStreamingMode,
+      ownerDisplayName: DEFAULT_UNIFIED_SETTINGS.ownerDisplayName,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       continueThreadsAfterServerUpdate: DEFAULT_UNIFIED_SETTINGS.continueThreadsAfterServerUpdate,
       backgroundActivity: DEFAULT_UNIFIED_SETTINGS.backgroundActivity,
@@ -1963,6 +1968,55 @@ function FontFamilySettingsRow({
   );
 }
 
+/**
+ * Free-text name field that writes once per edit: the draft commits on blur
+ * or Enter, Escape discards it, and a blank draft clears the setting.
+ */
+function OwnerDisplayNameInput({
+  value,
+  onCommit,
+}: {
+  value: string | null;
+  onCommit: (name: string | null) => void;
+}) {
+  // A null draft shows the persisted value, so a change written elsewhere
+  // (another device, reset) is reflected without an effect.
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (draft === null) return;
+    const trimmed = draft.trim();
+    const next = trimmed.length > 0 ? trimmed : null;
+    setDraft(null);
+    if (next !== value) onCommit(next);
+  };
+  return (
+    <Input
+      size="sm"
+      autoCapitalize="words"
+      autoComplete="name"
+      className="w-full sm:w-56"
+      maxLength={80}
+      placeholder="Name"
+      spellCheck={false}
+      value={draft ?? value ?? ""}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          commit();
+        } else if (event.key === "Escape" && draft !== null) {
+          // Discard uncommitted typing without closing the settings page,
+          // which is what an unhandled Escape does.
+          event.preventDefault();
+          event.stopPropagation();
+          setDraft(null);
+        }
+      }}
+      aria-label="Your name"
+    />
+  );
+}
+
 const AUTO_SETTLE_DEFAULT_DAYS = DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays ?? 3;
 
 function AutoSettleDaysInput({
@@ -2190,6 +2244,30 @@ export function GeneralSettingsPanel() {
   return (
     <SettingsPageContainer>
       <ProjectDefaultsSettings category="general" />
+      <SettingsSection id="profile" title="Profile">
+        <SettingsRow
+          serverScoped
+          settingKeys={["ownerDisplayName"]}
+          {...searchableSetting("owner-display-name")}
+          description="Shown on your messages when someone else joins a thread."
+          resetAction={
+            settings.ownerDisplayName !== DEFAULT_UNIFIED_SETTINGS.ownerDisplayName ? (
+              <SettingResetButton
+                label="your name"
+                onClick={() =>
+                  updateSettings({ ownerDisplayName: DEFAULT_UNIFIED_SETTINGS.ownerDisplayName })
+                }
+              />
+            ) : null
+          }
+          control={
+            <OwnerDisplayNameInput
+              value={settings.ownerDisplayName}
+              onCommit={(ownerDisplayName) => updateSettings({ ownerDisplayName })}
+            />
+          }
+        />
+      </SettingsSection>
       <SettingsSection id="organization" title="Organization">
         <SettingsRow
           {...searchableSetting("project-grouping")}

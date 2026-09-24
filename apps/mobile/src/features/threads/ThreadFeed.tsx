@@ -36,6 +36,7 @@ import {
   classifyMarkdownImageSource,
   markdownImageSourceFragment,
 } from "@t3tools/client-runtime/markdown-images";
+import { hasMultipleMessageAuthors } from "@t3tools/client-runtime/message-authors";
 import { resolveViewedImageAsset } from "@t3tools/client-runtime/work-log/presentation";
 import {
   renderCodexFileCitationsAsMarkdown,
@@ -1367,6 +1368,8 @@ function renderFeedEntry(
     readonly workGroupScrollPositions: Map<string, ThreadWorkGroupScrollPosition>;
     readonly terminalAssistantMessageIds: ReadonlySet<string>;
     readonly unsettledTurnId: TurnId | null;
+    /** True once two people have sent messages in this thread; user bubbles then name their author. */
+    readonly showMessageAuthors: boolean;
     readonly isWorking: boolean;
     readonly onCopyWorkRow: (rowId: string, value: string) => void;
     readonly onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
@@ -1550,8 +1553,18 @@ function renderFeedEntry(
       const visibleAttachments = attachments.filter(
         (attachment) => isImageAttachment(attachment) || !inlineAttachmentIds.has(attachment.id),
       );
+      const authorLabel = props.showMessageAuthors ? (message.author?.name ?? null) : null;
       return (
         <View className="mb-5 items-end">
+          {authorLabel !== null ? (
+            <Text
+              className="mb-1 pr-0.5 font-t3-medium text-xs text-foreground-secondary"
+              numberOfLines={1}
+              style={{ maxWidth: props.userBubbleMaxWidth }}
+            >
+              {authorLabel}
+            </Text>
+          ) : null}
           <View
             className="min-w-0 gap-2 rounded-[20px] px-3.5 py-2.5"
             style={{
@@ -2495,6 +2508,13 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       ),
     [presentedFeed, props.anchorMessageId, anchorTopInset],
   );
+  const showMessageAuthors = useMemo(
+    () =>
+      hasMultipleMessageAuthors(
+        props.feed.flatMap((entry) => (entry.type === "message" ? [entry.message] : [])),
+      ),
+    [props.feed],
+  );
   const terminalAssistantMessageIds = useMemo(() => {
     const terminalIdsByTurn = new Map<TurnId, string>();
     for (const entry of props.feed) {
@@ -2761,6 +2781,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             workGroupScrollPositions,
             terminalAssistantMessageIds,
             unsettledTurnId,
+            showMessageAuthors,
             isWorking: props.activeWorkStartedAt !== null,
             onCopyWorkRow,
             onToggleWorkGroup,
@@ -2807,6 +2828,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       workGroupScrollPositions,
       terminalAssistantMessageIds,
       unsettledTurnId,
+      showMessageAuthors,
       props.activeWorkStartedAt,
       iconSubtleColor,
       screenColor,

@@ -767,6 +767,7 @@ export function projectEvent(
             text: payload.text,
             ...(payload.attachments !== undefined ? { attachments: payload.attachments } : {}),
             ...(payload.context !== undefined ? { context: payload.context } : {}),
+            ...(payload.author !== undefined ? { author: payload.author } : {}),
             turnId: payload.turnId,
             streaming: payload.streaming,
             createdAt: payload.createdAt,
@@ -794,6 +795,7 @@ export function projectEvent(
                       ? { attachments: message.attachments }
                       : {}),
                     ...(message.context !== undefined ? { context: message.context } : {}),
+                    ...(message.author !== undefined ? { author: message.author } : {}),
                   }
                 : entry,
             )

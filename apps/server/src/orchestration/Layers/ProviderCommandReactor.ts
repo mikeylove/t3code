@@ -34,6 +34,7 @@ import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
+import { formatAuthoredMessageText } from "../messageAuthor.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import {
   ProviderAdapterProcessError,
@@ -1239,7 +1240,7 @@ const make = Effect.gen(function* () {
       });
       return;
     }
-    const { message, hasOtherUserMessages } = turnStart.value;
+    const { message, hasOtherUserMessages, hasOtherAuthors } = turnStart.value;
     const appendTurnStartFailure = (summary: string, detail: string) =>
       appendProviderFailureActivity({
         threadId: event.payload.threadId,
@@ -1483,12 +1484,23 @@ const make = Effect.gen(function* () {
       turnsAfterCompaction.set(event.payload.threadId, queued);
       return;
     }
+    const providerText = projectComposerContextForProvider({
+      text: message.text,
+      records: message.context?.records ?? [],
+    });
+    // Only a thread with more than one participant names the speaker; a solo
+    // thread sends exactly what it always has.
+    const messageText =
+      hasOtherAuthors && message.author !== undefined
+        ? formatAuthoredMessageText({
+            text: providerText,
+            author: message.author,
+            createdAt: message.createdAt,
+          })
+        : providerText;
     const sendTurnRequest = yield* buildSendTurnRequestForThread({
       threadId: event.payload.threadId,
-      messageText: projectComposerContextForProvider({
-        text: message.text,
-        records: message.context?.records ?? [],
-      }),
+      messageText,
       ...(message.attachments !== undefined ? { attachments: message.attachments } : {}),
       ...(event.payload.modelSelection !== undefined
         ? { modelSelection: event.payload.modelSelection }

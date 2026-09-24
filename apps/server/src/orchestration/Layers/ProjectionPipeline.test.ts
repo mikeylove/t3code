@@ -5,6 +5,7 @@ import {
   CorrelationId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
+  MessageAuthor,
   MessageId,
   ProjectId,
   ThreadId,
@@ -62,6 +63,7 @@ const exists = (filePath: string) =>
   });
 
 const BaseTestLayer = makeProjectionPipelinePrefixedTestLayer("t3-projection-pipeline-test-");
+const decodeMessageAuthor = Schema.decodeUnknownEffect(Schema.fromJsonString(MessageAuthor));
 const encodeThreadLinkedPullRequest = Schema.encodeSync(
   Schema.fromJsonString(ThreadLinkedPullRequest),
 );
@@ -4089,6 +4091,120 @@ it.layer(BaseTestLayer)("OrchestrationProjectionPipeline", (it) => {
           checkpointRef: "refs/t3/checkpoints/thread-checkpoint-guard/turn/1",
         },
       ]);
+    }),
+  );
+
+  it.effect("projects the message author from message-sent events into the read model", () =>
+    Effect.gen(function* () {
+      const projectionPipeline = yield* OrchestrationProjectionPipeline;
+      const eventStore = yield* OrchestrationEventStore;
+      const sql = yield* SqlClient.SqlClient;
+      const now = "2026-01-01T00:00:00.000Z";
+      const threadId = ThreadId.make("thread-author");
+      const author = { id: "session-1", name: "Mike", kind: "human" as const };
+
+      yield* eventStore.append({
+        type: "project.created",
+        eventId: EventId.make("evt-author-1"),
+        aggregateKind: "project",
+        aggregateId: ProjectId.make("project-author"),
+        occurredAt: now,
+        commandId: CommandId.make("cmd-author-1"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-author-1"),
+        metadata: {},
+        payload: {
+          projectId: ProjectId.make("project-author"),
+          title: "Project Author",
+          workspaceRoot: "/tmp/project-author",
+          defaultModelSelection: null,
+          scripts: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      yield* eventStore.append({
+        type: "thread.created",
+        eventId: EventId.make("evt-author-2"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.make("cmd-author-2"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-author-2"),
+        metadata: {},
+        payload: {
+          threadId,
+          projectId: ProjectId.make("project-author"),
+          title: "Thread Author",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          runtimeMode: "full-access",
+          branch: null,
+          worktreePath: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      yield* eventStore.append({
+        type: "thread.message-sent",
+        eventId: EventId.make("evt-author-3"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.make("cmd-author-3"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-author-3"),
+        metadata: {},
+        payload: {
+          threadId,
+          messageId: MessageId.make("user-authored"),
+          role: "user",
+          text: "hello",
+          author,
+          turnId: null,
+          streaming: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      yield* eventStore.append({
+        type: "thread.message-sent",
+        eventId: EventId.make("evt-author-4"),
+        aggregateKind: "thread",
+        aggregateId: threadId,
+        occurredAt: now,
+        commandId: CommandId.make("cmd-author-4"),
+        causationEventId: null,
+        correlationId: CorrelationId.make("cmd-author-4"),
+        metadata: {},
+        payload: {
+          threadId,
+          messageId: MessageId.make("user-anonymous"),
+          role: "user",
+          text: "anonymous",
+          turnId: null,
+          streaming: false,
+          createdAt: "2026-01-01T00:00:01.000Z",
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        },
+      });
+
+      yield* projectionPipeline.bootstrap;
+
+      const rows = yield* sql<{ readonly messageId: string; readonly author: string | null }>`
+        SELECT message_id AS "messageId", author_json AS "author"
+        FROM projection_thread_messages
+        WHERE thread_id = ${threadId}
+        ORDER BY created_at ASC
+      `;
+      assert.equal(rows.length, 2);
+      assert.equal(rows[0]?.messageId, "user-authored");
+      assert.deepStrictEqual(yield* decodeMessageAuthor(rows[0]?.author), author);
+      assert.equal(rows[1]?.messageId, "user-anonymous");
+      assert.isNull(rows[1]?.author);
     }),
   );
 });

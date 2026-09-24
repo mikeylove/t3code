@@ -324,4 +324,48 @@ layer("ProjectionThreadMessageRepository", (it) => {
       );
     }),
   );
+
+  it.effect("persists the message author and keeps it across updates without an author", () =>
+    Effect.gen(function* () {
+      const repository = yield* ProjectionThreadMessageRepository;
+      const threadId = ThreadId.make("thread-author");
+      const messageId = MessageId.make("message-author");
+      const createdAt = "2026-02-28T19:05:00.000Z";
+      const author = { id: "session-1", name: "Mike", kind: "human" as const };
+      yield* repository.upsert({
+        messageId,
+        threadId,
+        turnId: null,
+        role: "user",
+        text: "hello",
+        author,
+        isStreaming: false,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      yield* repository.upsert({
+        messageId,
+        threadId,
+        turnId: null,
+        role: "user",
+        text: "hello",
+        isStreaming: false,
+        createdAt,
+        updatedAt: "2026-02-28T19:05:01.000Z",
+      });
+      yield* repository.upsert({
+        messageId: MessageId.make("message-no-author"),
+        threadId,
+        turnId: null,
+        role: "user",
+        text: "anonymous",
+        isStreaming: false,
+        createdAt: "2026-02-28T19:05:02.000Z",
+        updatedAt: "2026-02-28T19:05:02.000Z",
+      });
+      const rows = yield* repository.listByThreadId({ threadId });
+      assert.deepStrictEqual(rows[0]?.author, author);
+      assert.isFalse("author" in (rows[1] ?? {}));
+    }),
+  );
 });

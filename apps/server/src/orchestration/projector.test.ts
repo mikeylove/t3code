@@ -1236,4 +1236,85 @@ describe("orchestration projector", () => {
       expect(thread?.activities[0]?.id).toBe(`worktree-setup:${threadId}`);
     }),
   );
+
+  it("keeps the message author in the in-memory read model", async () => {
+    const createdAt = "2026-02-23T10:00:00.000Z";
+    const author = { id: "session-1", name: "Mike", kind: "human" as const };
+    const model = await Effect.runPromise(
+      Effect.gen(function* () {
+        const afterCreate = yield* projectEvent(
+          createEmptyReadModel(createdAt),
+          makeEvent({
+            sequence: 1,
+            type: "thread.created",
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            occurredAt: createdAt,
+            commandId: "cmd-create",
+            payload: {
+              threadId: "thread-1",
+              projectId: "project-1",
+              title: "demo",
+              modelSelection: {
+                provider: ProviderDriverKind.make("codex"),
+                model: "gpt-5.3-codex",
+              },
+              runtimeMode: "full-access",
+              branch: null,
+              worktreePath: null,
+              createdAt,
+              updatedAt: createdAt,
+            },
+          }),
+        );
+        const afterAuthored = yield* projectEvent(
+          afterCreate,
+          makeEvent({
+            sequence: 2,
+            type: "thread.message-sent",
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            occurredAt: createdAt,
+            commandId: "cmd-user-1",
+            payload: {
+              threadId: "thread-1",
+              messageId: "user-msg-1",
+              role: "user",
+              text: "hello",
+              author,
+              turnId: null,
+              streaming: false,
+              createdAt,
+              updatedAt: createdAt,
+            },
+          }),
+        );
+        return yield* projectEvent(
+          afterAuthored,
+          makeEvent({
+            sequence: 3,
+            type: "thread.message-sent",
+            aggregateKind: "thread",
+            aggregateId: "thread-1",
+            occurredAt: createdAt,
+            commandId: "cmd-user-2",
+            payload: {
+              threadId: "thread-1",
+              messageId: "user-msg-2",
+              role: "user",
+              text: "anonymous",
+              turnId: null,
+              streaming: false,
+              createdAt,
+              updatedAt: createdAt,
+            },
+          }),
+        );
+      }),
+    );
+
+    const messages = model.threads[0]?.messages ?? [];
+    expect(messages[0]?.author).toEqual(author);
+    expect(messages[1]).not.toHaveProperty("author");
+  });
 });

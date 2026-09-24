@@ -260,6 +260,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["long lines code blocks tables diffs file previews"],
   },
   {
+    id: "owner-display-name",
+    title: "Your name",
+    to: "/settings/general",
+    scope: "environment-defaults",
+    searchTerms: ["display name profile identity author participant shared thread messages owner"],
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",

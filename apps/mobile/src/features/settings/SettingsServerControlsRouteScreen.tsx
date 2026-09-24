@@ -16,6 +16,7 @@ import { useRef, useState, type ComponentProps } from "react";
 import { Alert, Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { AppTextInput } from "../../components/AppText";
 import { RUNTIME_MODE_CHOICES } from "../threads/thread-settings-options";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -36,9 +37,10 @@ import {
   type ScopedMobileSettingsTarget,
 } from "./settings-scoped-server";
 
-type SettingsPage = "new-threads" | "source-control" | "agent-behavior" | "maintenance";
+type SettingsPage = "profile" | "new-threads" | "source-control" | "agent-behavior" | "maintenance";
 
 const PAGE_TITLES: Record<SettingsPage, string> = {
+  profile: "Profile",
   "new-threads": "New threads",
   "source-control": "Source control",
   "agent-behavior": "Agent behavior",
@@ -46,6 +48,7 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 };
 
 const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettingKey[]> = {
+  profile: [],
   "new-threads": ["defaultThreadEnvMode", "worktreeSubmodules", "defaultRuntimeMode"],
   "source-control": ["defaultAutoPull", "newWorktreesStartFromOrigin"],
   "agent-behavior": ["responseStreamingMode", "enableAgentBrowserAccess"],
@@ -116,6 +119,10 @@ const STREAMING_CHOICES: ReadonlyArray<{
     description: "Repaint for every token; this can be slower.",
   },
 ];
+
+export function SettingsEnvironmentProfileRouteScreen() {
+  return <ServerSettingsDetail page="profile" />;
+}
 
 export function SettingsEnvironmentNewThreadsRouteScreen() {
   return <ServerSettingsDetail page="new-threads" />;
@@ -248,6 +255,28 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                   onClear={clearProjectOverrides}
                 />
               ) : null}
+              {props.page === "profile" ? (
+                <SettingsSection
+                  title="Your name"
+                  trailing={
+                    pendingWrites === 0 && isMixed("ownerDisplayName") ? (
+                      <MixedValuesLabel projectSelected={projectSelected} />
+                    ) : null
+                  }
+                >
+                  <OwnerNameField
+                    value={isMixed("ownerDisplayName") ? null : reference.settings.ownerDisplayName}
+                    subtitle={
+                      projectSelected
+                        ? "Environment-wide setting. Select All projects to change it."
+                        : "Shown on your messages when someone else joins a thread."
+                    }
+                    disabled={disabledFor("ownerDisplayName")}
+                    onValueChange={(ownerDisplayName) => write({ ownerDisplayName })}
+                  />
+                </SettingsSection>
+              ) : null}
+
               {props.page === "new-threads" ? (
                 <>
                   <SettingsSection
@@ -504,6 +533,50 @@ function ChoiceRow(props: {
         />
       ) : null}
     </Pressable>
+  );
+}
+
+/**
+ * Free-text name field that writes once per edit: the draft commits when the
+ * field loses focus or the keyboard's done key is pressed, and a blank draft
+ * clears the name.
+ */
+function OwnerNameField(props: {
+  readonly value: string | null;
+  readonly subtitle: string;
+  readonly disabled: boolean;
+  readonly onValueChange: (value: string | null) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const commit = () => {
+    if (props.disabled) {
+      setDraft(null);
+      return;
+    }
+    const trimmed = (draft ?? props.value ?? "").trim();
+    setDraft(null);
+    const next = trimmed.length > 0 ? trimmed : null;
+    if (next !== props.value) props.onValueChange(next);
+  };
+  return (
+    <View className={props.disabled ? "gap-3 p-4 opacity-[0.45]" : "gap-3 p-4"}>
+      <AppTextInput
+        accessibilityLabel="Your name"
+        className="min-h-11 rounded-xl border-continuous bg-card px-3 text-base text-foreground"
+        autoCapitalize="words"
+        autoComplete="name"
+        autoCorrect={false}
+        maxLength={80}
+        placeholder="Name"
+        returnKeyType="done"
+        value={draft ?? props.value ?? ""}
+        onChangeText={setDraft}
+        onBlur={commit}
+        onSubmitEditing={commit}
+        editable={!props.disabled}
+      />
+      <Text className="text-sm leading-normal text-foreground-muted">{props.subtitle}</Text>
+    </View>
   );
 }
 

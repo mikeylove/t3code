@@ -840,6 +840,51 @@ it.effect("decodes a legacy message-sent event persisted without turnId", () =>
     assert.strictEqual(event.type, "thread.message-sent");
     if (event.type !== "thread.message-sent") return;
     assert.strictEqual(event.payload.turnId, null);
+    assert.strictEqual(event.payload.author, undefined);
+  }),
+);
+
+it.effect("decodes a message-sent event carrying a server-stamped author", () =>
+  Effect.gen(function* () {
+    const author = { id: "clay", name: "Clay", kind: "human" as const };
+    const event = yield* decodeOrchestrationEvent({
+      sequence: 540,
+      eventId: "event-message-authored-1",
+      aggregateKind: "thread",
+      aggregateId: "thread-1",
+      type: "thread.message-sent",
+      occurredAt: "2026-01-01T00:00:00.000Z",
+      commandId: "cmd-message-authored-1",
+      causationEventId: null,
+      correlationId: "cmd-message-authored-1",
+      metadata: {},
+      payload: {
+        threadId: "thread-1",
+        messageId: "message-2",
+        role: "user",
+        text: "hello from a second participant",
+        author,
+        turnId: null,
+        streaming: false,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    assert.strictEqual(event.type, "thread.message-sent");
+    if (event.type !== "thread.message-sent") return;
+    assert.deepStrictEqual(event.payload.author, author);
+
+    const message = yield* decodeOrchestrationMessage({
+      id: "message-2",
+      role: "user",
+      text: "hello from a second participant",
+      author,
+      turnId: null,
+      streaming: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    assert.deepStrictEqual(message.author, author);
   }),
 );
 

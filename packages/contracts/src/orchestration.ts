@@ -571,12 +571,31 @@ export const OrchestrationMessageRole = Schema.Literals([
 ]);
 export type OrchestrationMessageRole = typeof OrchestrationMessageRole.Type;
 
+export const MessageAuthorKind = Schema.Literals(["human", "agent"]);
+export type MessageAuthorKind = typeof MessageAuthorKind.Type;
+
+/**
+ * Who produced a user-role message or answered a prompt. Stamped by the server
+ * from the authenticated session that dispatched the command; clients never
+ * supply it. `id` is the session subject, stable across reconnects of the same
+ * pairing, so two messages from one person compare equal even if the label
+ * shown changes. Absent on messages persisted before authors were recorded and
+ * on messages the server itself synthesizes.
+ */
+export const MessageAuthor = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  name: TrimmedNonEmptyString,
+  kind: MessageAuthorKind,
+});
+export type MessageAuthor = typeof MessageAuthor.Type;
+
 export const OrchestrationMessage = Schema.Struct({
   id: MessageId,
   role: OrchestrationMessageRole,
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   context: Schema.optional(OrchestrationMessageContext),
+  author: Schema.optional(MessageAuthor),
   turnId: Schema.NullOr(TurnId),
   streaming: Schema.Boolean,
   createdAt: IsoDateTime,
@@ -1314,6 +1333,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
     attachments: Schema.Array(ChatAttachment),
     context: Schema.optional(OrchestrationMessageContext),
   }),
+  // Server-stamped; see MessageAuthor. Not part of the client command.
+  author: Schema.optional(MessageAuthor),
   modelSelection: Schema.optional(ModelSelection),
   titleSeed: Schema.optional(TrimmedNonEmptyString),
   runtimeMode: RuntimeMode.pipe(Schema.withDecodingDefault(Effect.succeed(DEFAULT_RUNTIME_MODE))),
@@ -1359,6 +1380,8 @@ const ThreadApprovalRespondCommand = Schema.Struct({
   threadId: ThreadId,
   requestId: ApprovalRequestId,
   decision: ProviderApprovalDecision,
+  // Server-stamped; the server overwrites whatever a client sends.
+  author: Schema.optional(MessageAuthor),
   createdAt: IsoDateTime,
 });
 
@@ -1369,6 +1392,8 @@ const ThreadUserInputRespondCommand = Schema.Struct({
   requestId: ApprovalRequestId,
   answers: ProviderUserInputAnswers,
   attachmentsByQuestionId: Schema.optional(UserInputAttachments),
+  // Server-stamped; the server overwrites whatever a client sends.
+  author: Schema.optional(MessageAuthor),
   createdAt: IsoDateTime,
 });
 
@@ -1551,6 +1576,8 @@ const ThreadMessageUserAppendCommand = Schema.Struct({
     attachments: Schema.Array(ChatAttachment),
     context: Schema.optional(OrchestrationMessageContext),
   }),
+  // Server-stamped; see MessageAuthor.
+  author: Schema.optional(MessageAuthor),
   createdAt: IsoDateTime,
 });
 
@@ -1893,6 +1920,7 @@ export const ThreadMessageSentPayload = Schema.Struct({
   text: Schema.String,
   attachments: Schema.optional(Schema.Array(ChatAttachment)),
   context: Schema.optional(OrchestrationMessageContext),
+  author: Schema.optional(MessageAuthor),
   // Events persisted before the field existed carry no key at all.
   turnId: Schema.NullOr(TurnId).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   streaming: Schema.Boolean,
@@ -1923,6 +1951,7 @@ export const ThreadApprovalResponseRequestedPayload = Schema.Struct({
   threadId: ThreadId,
   requestId: ApprovalRequestId,
   decision: ProviderApprovalDecision,
+  author: Schema.optional(MessageAuthor),
   createdAt: IsoDateTime,
 });
 
@@ -1931,6 +1960,7 @@ const ThreadUserInputResponseRequestedPayload = Schema.Struct({
   requestId: ApprovalRequestId,
   answers: ProviderUserInputAnswers,
   attachmentsByQuestionId: Schema.optional(UserInputAttachments),
+  author: Schema.optional(MessageAuthor),
   createdAt: IsoDateTime,
 });
 

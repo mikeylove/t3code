@@ -23,6 +23,7 @@ import {
   type WorktreeSetupSnapshot,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { hasMultipleMessageAuthors } from "@t3tools/client-runtime/message-authors";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 import type { CodexArtifactTemplate } from "@t3tools/client-runtime/codex-artifact-templates";
 import {
@@ -298,6 +299,8 @@ interface TimelineRowSharedState {
   onSteerQueuedMessage: (id: string) => void;
   steerQueuedMessageShortcutLabel: string | null;
   onRemoveQueuedMessage: (id: string) => void;
+  /** True once two people have sent messages in this thread; user rows then name their author. */
+  showMessageAuthors: boolean;
 }
 
 interface TimelineRowActivityState {
@@ -805,6 +808,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     queuedMessages,
   ]);
   const rows = useStableRows(rawRows, listIdentityKey);
+  const showMessageAuthors = useMemo(
+    () =>
+      hasMultipleMessageAuthors(
+        timelineEntries.flatMap((entry) => (entry.kind === "message" ? [entry.message] : [])),
+      ),
+    [timelineEntries],
+  );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const restoreRowIndex =
     restoringThreadPosition && rememberedPosition?.atEnd === false
@@ -1159,6 +1169,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
+      showMessageAuthors,
     }),
     [
       readyCitationRequest,
@@ -1194,6 +1205,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       onSteerQueuedMessage,
       steerQueuedMessageShortcutLabel,
       onRemoveQueuedMessage,
+      showMessageAuthors,
     ],
   );
   const backgroundWorktreeSetup =
@@ -2078,10 +2090,16 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     ],
   );
 
+  const authorLabel = ctx.showMessageAuthors ? (row.message.author?.name ?? null) : null;
   return (
     <div className="group flex flex-col items-end gap-1">
+      {authorLabel !== null ? (
+        <span className="max-w-[80%] truncate pe-1 text-muted-foreground text-xs">
+          {authorLabel}
+        </span>
+      ) : null}
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
-        <MessageAuthorHeading>You</MessageAuthorHeading>
+        <MessageAuthorHeading>{authorLabel ?? "You"}</MessageAuthorHeading>
         {(regularImages.length > 0 || userVideos.length > 0) && (
           <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
             {regularImages.map((image) => (

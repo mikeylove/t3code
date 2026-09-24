@@ -11,6 +11,7 @@ import {
   ThreadLinkedPullRequest,
   TurnId,
   ProviderInstanceId,
+  MessageAuthor,
   OrchestrationMessageContext,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
@@ -46,6 +47,7 @@ const encodeThreadLinkedPullRequest = Schema.encodeSync(
 const encodeMessageContext = Schema.encodeEffect(
   Schema.fromJsonString(OrchestrationMessageContext),
 );
+const encodeMessageAuthor = Schema.encodeEffect(Schema.fromJsonString(MessageAuthor));
 
 it.effect("reads project shells without loading threads or resolving excluded projects", () => {
   const resolved: string[] = [];
@@ -845,6 +847,7 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
             attachments,
             context: messageContext,
           },
+          hasOtherAuthors: false,
           hasOtherUserMessages: false,
         }),
       );
@@ -918,6 +921,49 @@ projectionSnapshotLayer("ProjectionSnapshotQuery", (it) => {
           assert.equal(context.value.hasOtherUserMessages, hasOtherUserMessages);
         }
       }
+    }),
+  );
+
+  it.effect("reports other authors only for stamped user messages with a different id", () =>
+    Effect.gen(function* () {
+      const query = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-turn-start-authors");
+      const messageId = MessageId.make("message-turn-start-authors");
+      const createdAt = "2026-09-05T00:00:00.000Z";
+      const mike = yield* encodeMessageAuthor({ id: "session-mike", name: "Mike", kind: "human" });
+      const theo = yield* encodeMessageAuthor({ id: "session-theo", name: "Theo", kind: "human" });
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id, thread_id, role, text, author_json, is_streaming, created_at, updated_at
+        ) VALUES (${messageId}, ${threadId}, 'user', 'Start a turn', ${mike}, 0, ${createdAt}, ${createdAt})
+      `;
+      yield* sql`
+        INSERT INTO projection_thread_messages (
+          message_id, thread_id, role, text, author_json, is_streaming, created_at, updated_at
+        ) VALUES ('turn-start-other-author', ${threadId}, 'user', 'Another prompt', NULL, 0,
+          '2026-09-05T00:00:01.000Z', '2026-09-05T00:00:01.000Z')
+      `;
+
+      const read = (self: string | null, other: string | null, role: string) =>
+        Effect.gen(function* () {
+          yield* sql`
+            UPDATE projection_thread_messages SET author_json = ${self} WHERE message_id = ${messageId}
+          `;
+          yield* sql`
+            UPDATE projection_thread_messages SET author_json = ${other}, role = ${role}
+            WHERE message_id = 'turn-start-other-author'
+          `;
+          const context = yield* query.getTurnStartMessage({ threadId, messageId });
+          assert.equal(context._tag, "Some");
+          return context._tag === "Some" ? context.value.hasOtherAuthors : undefined;
+        });
+
+      assert.equal(yield* read(mike, null, "user"), false);
+      assert.equal(yield* read(mike, mike, "user"), false);
+      assert.equal(yield* read(mike, theo, "user"), true);
+      assert.equal(yield* read(null, theo, "user"), false);
+      assert.equal(yield* read(mike, theo, "assistant"), false);
     }),
   );
 

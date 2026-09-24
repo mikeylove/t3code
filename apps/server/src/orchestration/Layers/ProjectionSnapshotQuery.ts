@@ -2,6 +2,7 @@ import {
   AgentSessionImportSource,
   ApprovalRequestId,
   ChatAttachment,
+  MessageAuthor,
   OrchestrationMessageContext,
   CheckpointRef,
   IsoDateTime,
@@ -114,10 +115,11 @@ const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
     isStreaming: Schema.Number,
     attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
     context: Schema.NullOr(Schema.fromJsonString(OrchestrationMessageContext)),
+    author: Schema.NullOr(Schema.fromJsonString(MessageAuthor)),
   }),
 );
 const ProjectionTurnStartMessageDbRowSchema = ProjectionThreadMessageDbRowSchema.mapFields(
-  Struct.assign({ hasOtherUserMessages: Schema.Number }),
+  Struct.assign({ hasOtherUserMessages: Schema.Number, hasOtherAuthors: Schema.Number }),
 );
 const ProjectionThreadProposedPlanDbRowSchema = ProjectionThreadProposedPlan;
 const ProjectionThreadPullRequestDbRowSchema = ProjectionThreadPullRequest.mapFields(
@@ -728,6 +730,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           text,
           attachments_json AS "attachments",
           context_json AS "context",
+          author_json AS "author",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
@@ -1331,6 +1334,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
         text,
         attachments_json AS "attachments",
         context_json AS "context",
+        author_json AS "author",
         is_streaming AS "isStreaming",
         created_at AS "createdAt",
         updated_at AS "updatedAt",
@@ -1344,8 +1348,18 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
               LOWER(TRIM(other.text, ${MESSAGE_TRIM_WHITESPACE})) != '/compact'
               OR COALESCE(json_array_length(other.attachments_json), 0) > 0
             )
-        ) AS "hasOtherUserMessages"
-      FROM projection_thread_messages
+        ) AS "hasOtherUserMessages",
+        EXISTS (
+          SELECT 1
+          FROM projection_thread_messages AS other
+          WHERE other.thread_id = ${threadId}
+            AND other.message_id != ${messageId}
+            AND other.role = 'user'
+            AND self.author_json IS NOT NULL
+            AND other.author_json IS NOT NULL
+            AND json_extract(other.author_json, '$.id') != json_extract(self.author_json, '$.id')
+        ) AS "hasOtherAuthors"
+      FROM projection_thread_messages AS self
       WHERE thread_id = ${threadId} AND message_id = ${messageId}
       LIMIT 1
     `,
@@ -1364,6 +1378,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           text,
           attachments_json AS "attachments",
           context_json AS "context",
+          author_json AS "author",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
@@ -1777,6 +1792,7 @@ const makeProjectionSnapshotQuery = Effect.gen(function* () {
           text,
           attachments_json AS "attachments",
           context_json AS "context",
+          author_json AS "author",
           is_streaming AS "isStreaming",
           created_at AS "createdAt",
           updated_at AS "updatedAt"
@@ -2187,6 +2203,7 @@ pending_approval_requests AS (
                   text: row.text,
                   ...(row.attachments !== null ? { attachments: row.attachments } : {}),
                   ...(row.context !== null ? { context: row.context } : {}),
+                  ...(row.author !== null ? { author: row.author } : {}),
                   turnId: row.turnId,
                   streaming: row.isStreaming === 1,
                   createdAt: row.createdAt,
@@ -3316,8 +3333,10 @@ pending_approval_requests AS (
         updatedAt: row.updatedAt,
         ...(row.attachments !== null ? { attachments: row.attachments } : {}),
         ...(row.context !== null ? { context: row.context } : {}),
+        ...(row.author !== null ? { author: row.author } : {}),
       },
       hasOtherUserMessages: row.hasOtherUserMessages === 1,
+      hasOtherAuthors: row.hasOtherAuthors === 1,
     }));
   });
 
@@ -3580,6 +3599,9 @@ pending_approval_requests AS (
           }
           if (row.context !== null) {
             Object.assign(message, { context: row.context });
+          }
+          if (row.author !== null) {
+            Object.assign(message, { author: row.author });
           }
           return message;
         }),

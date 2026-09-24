@@ -77,6 +77,7 @@ import {
   SettingsEnvironmentAgentBehaviorRouteScreen,
   SettingsEnvironmentMaintenanceRouteScreen,
   SettingsEnvironmentNewThreadsRouteScreen,
+  SettingsEnvironmentProfileRouteScreen,
   SettingsEnvironmentSourceControlRouteScreen,
 } from "./features/settings/SettingsServerControlsRouteScreen";
 import { SettingsKeyboardRouteScreen } from "./features/settings/SettingsKeyboardRouteScreen";
@@ -198,6 +199,11 @@ const SettingsContentStack = createNativeStackNavigator({
       screen: SettingsEnvironmentDetailRouteScreen,
       linking: "environments/:environmentId",
       options: { title: "Environment" },
+    }),
+    SettingsEnvironmentProfile: createNativeStackScreen({
+      screen: SettingsEnvironmentProfileRouteScreen,
+      linking: "profile",
+      options: { title: "Profile" },
     }),
     SettingsEnvironmentNewThreads: createNativeStackScreen({
       screen: SettingsEnvironmentNewThreadsRouteScreen,
