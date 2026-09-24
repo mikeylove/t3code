@@ -345,6 +345,8 @@ export interface EnvironmentSessionPrincipalShape {
   readonly scopes: ReadonlySet<AuthEnvironmentScope>;
   readonly proofKeyThumbprint?: string;
   readonly expiresAt?: DateTime.DateTime;
+  /** Present for thread guests: the only thread this session may touch. */
+  readonly threadId?: ThreadId;
 }
 
 export class EnvironmentAuthenticatedPrincipal extends Context.Service<

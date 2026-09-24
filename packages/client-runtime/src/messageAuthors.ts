@@ -1,22 +1,13 @@
-import type { OrchestrationMessage } from "@t3tools/contracts";
+import { isSharedThreadConversation, type OrchestrationMessage } from "@t3tools/contracts";
 
 /**
- * Whether a thread's user messages came from more than one person. Clients
- * label user bubbles with the author's name only when this holds, so a solo
- * thread looks exactly as it always has. Messages without an author (persisted
- * before authors were recorded, or synthesized by the server) never count.
+ * Whether clients should label user bubbles with the author's name: only in a
+ * shared conversation, so a solo thread looks exactly as it always has. The
+ * rule itself lives in contracts beside the author schema so the server's
+ * prompt prefix and the clients' labels can never disagree.
  */
 export function hasMultipleMessageAuthors(
   messages: Iterable<Pick<OrchestrationMessage, "role" | "author">>,
 ): boolean {
-  let firstAuthorId: string | undefined;
-  for (const message of messages) {
-    if (message.role !== "user" || message.author === undefined) continue;
-    if (firstAuthorId === undefined) {
-      firstAuthorId = message.author.id;
-    } else if (message.author.id !== firstAuthorId) {
-      return true;
-    }
-  }
-  return false;
+  return isSharedThreadConversation(messages);
 }

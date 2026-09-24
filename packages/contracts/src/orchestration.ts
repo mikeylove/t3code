@@ -589,6 +589,35 @@ export const MessageAuthor = Schema.Struct({
 });
 export type MessageAuthor = typeof MessageAuthor.Type;
 
+/**
+ * The author id every one of the environment owner's sessions resolves to.
+ * Any other author is a guest, and a guest's presence alone makes a thread
+ * shared: the owner is a participant of every thread whether or not their
+ * older messages were recorded with an author.
+ */
+export const OWNER_MESSAGE_AUTHOR_ID = "owner";
+
+/**
+ * Whether a thread's conversation involves more than one person, judged from
+ * the user-role authors seen so far. Unattributed messages never count, so
+ * history from before authors existed cannot flip an old thread on its own.
+ */
+export function isSharedThreadConversation(
+  messages: Iterable<Pick<OrchestrationMessage, "role" | "author">>,
+): boolean {
+  let firstAuthorId: string | undefined;
+  for (const message of messages) {
+    if (message.role !== "user" || message.author === undefined) continue;
+    if (message.author.id !== OWNER_MESSAGE_AUTHOR_ID) return true;
+    if (firstAuthorId === undefined) {
+      firstAuthorId = message.author.id;
+    } else if (message.author.id !== firstAuthorId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export const OrchestrationMessage = Schema.Struct({
   id: MessageId,
   role: OrchestrationMessageRole,

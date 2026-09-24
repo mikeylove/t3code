@@ -6,6 +6,7 @@ import type {
   ServerAuthSessionMethod,
   AuthSessionId,
   AuthSessionState,
+  ThreadId,
 } from "@t3tools/contracts";
 import { EnvironmentHttpCommonError, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import type { EnvironmentHttpCommonError as EnvironmentHttpCommonErrorType } from "@t3tools/contracts";
@@ -113,6 +114,8 @@ export interface ServerPairingLinkRecord {
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly subject: string;
   readonly label?: string;
+  /** Present on a thread invite: the one thread its sessions may see. */
+  readonly threadId?: ThreadId;
   readonly createdAt: string;
   readonly expiresAt: string;
 }
@@ -128,6 +131,8 @@ export interface ServerClientSessionRecord {
   readonly lastConnectedAt: string | null;
   readonly connected: boolean;
   readonly current: boolean;
+  /** Present on a thread guest: the one thread this session may see. */
+  readonly threadId?: ThreadId;
 }
 
 type ServerAuthGateState =
@@ -353,6 +358,7 @@ export async function submitServerAuthCredential(credential: string): Promise<vo
 export async function createServerPairingCredential(input?: {
   readonly label?: string;
   readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
+  readonly threadId?: ThreadId;
 }): Promise<AuthPairingCredentialResult> {
   const trimmedLabel = input?.label?.trim();
   try {
@@ -364,6 +370,7 @@ export async function createServerPairingCredential(input?: {
             payload: {
               ...(trimmedLabel ? { label: trimmedLabel } : {}),
               ...(input?.scopes ? { scopes: input.scopes } : {}),
+              ...(input?.threadId ? { threadId: input.threadId } : {}),
             },
           }),
         ),

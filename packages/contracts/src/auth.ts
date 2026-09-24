@@ -5,6 +5,7 @@ import {
   AuthSessionId,
   ClientSurface,
   ClientWebDeployment,
+  ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 
@@ -224,6 +225,9 @@ export const AuthPairingLink = Schema.Struct({
   scopes: AuthEnvironmentScopes,
   subject: TrimmedNonEmptyString,
   label: Schema.optionalKey(TrimmedNonEmptyString),
+  // Set when the link only admits a "thread guest": a session restricted to
+  // this one thread. A restriction on top of `scopes`, never a grant.
+  threadId: Schema.optionalKey(ThreadId),
   createdAt: Schema.DateTimeUtc,
   expiresAt: Schema.DateTimeUtc,
 });
@@ -245,6 +249,7 @@ export const AuthClientSession = Schema.Struct({
   scopes: AuthEnvironmentScopes,
   method: ServerAuthSessionMethod,
   client: AuthClientMetadata,
+  threadId: Schema.optionalKey(ThreadId),
   issuedAt: Schema.DateTimeUtc,
   expiresAt: Schema.DateTimeUtc,
   lastConnectedAt: Schema.NullOr(Schema.DateTimeUtc),
@@ -342,6 +347,7 @@ export type AuthRevokeClientSessionInput = typeof AuthRevokeClientSessionInput.T
 export const AuthCreatePairingCredentialInput = Schema.Struct({
   label: Schema.optionalKey(TrimmedNonEmptyString),
   scopes: Schema.optionalKey(AuthEnvironmentScopes),
+  threadId: Schema.optionalKey(ThreadId),
 });
 export type AuthCreatePairingCredentialInput = typeof AuthCreatePairingCredentialInput.Type;
 
@@ -351,5 +357,7 @@ export const AuthSessionState = Schema.Struct({
   scopes: Schema.optionalKey(AuthEnvironmentScopes),
   sessionMethod: Schema.optionalKey(ServerAuthSessionMethod),
   expiresAt: Schema.optionalKey(Schema.DateTimeUtc),
+  /** Set for a thread guest: the one thread this session may see. */
+  threadId: Schema.optionalKey(ThreadId),
 });
 export type AuthSessionState = typeof AuthSessionState.Type;

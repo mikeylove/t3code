@@ -1,4 +1,5 @@
 import { requestCustomSnooze } from "./CustomSnoozeDialog";
+import { requestThreadInvite, useCanInviteToThread } from "./ThreadInviteDialog";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/shared/threadPullRequests";
 import { useAtomValue } from "@effect/atom-react";
@@ -2222,6 +2223,7 @@ export default function Sidebar() {
   );
   const { environments } = useEnvironments();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const canInviteToThread = useCanInviteToThread();
   const clearSelection = useThreadSelectionStore((s) => s.clearSelection);
   const setSelectionAnchor = useThreadSelectionStore((s) => s.setAnchor);
   const toggleThreadSelection = useThreadSelectionStore((s) => s.toggleThread);
@@ -4054,6 +4056,7 @@ export default function Sidebar() {
               isRegeneratingTitle,
               isRunning:
                 thread.session?.status === "running" && thread.session.activeTurnId != null,
+              canInvite: canInviteToThread(threadRef),
               supports: {
                 settlement: supportsSettlement,
                 snooze: supportsSnooze,
@@ -4129,6 +4132,9 @@ export default function Sidebar() {
             return;
           case "rename":
             startThreadRename(threadRef, thread.title);
+            return;
+          case "invite":
+            requestThreadInvite({ threadRef, threadTitle: thread.title });
             return;
           case "regenerate-title": {
             if (isRegeneratingTitle) return;
@@ -4240,6 +4246,7 @@ export default function Sidebar() {
       attemptUnpin,
       attemptUnsettle,
       attemptUnsnooze,
+      canInviteToThread,
       confirmThreadArchive,
       confirmThreadDelete,
       copyBranchToClipboard,

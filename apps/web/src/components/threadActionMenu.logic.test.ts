@@ -11,6 +11,7 @@ const baseState: ThreadActionMenuState = {
   canSnoozeNow: true,
   isRegeneratingTitle: false,
   isRunning: false,
+  canInvite: false,
   supports: { settlement: true, snooze: true, pinning: true, titleRegeneration: true },
   snoozePresets: [
     { id: "hour", label: "In 1 hour", whenLabel: "3:00 PM", snoozedUntil: "2026-08-07T15:00:00Z" },
@@ -120,6 +121,14 @@ describe("buildThreadActionMenuItems", () => {
         supports: { settlement: false, snooze: false, pinning: false, titleRegeneration: false },
       }),
     ).toContain("archive");
+  });
+
+  it("offers invite only when the client can mint a thread invite", () => {
+    expect(ids(baseState)).not.toContain("invite");
+    const items = buildThreadActionMenuItems({ ...baseState, canInvite: true });
+    const inviteIndex = items.findIndex((item) => item.id === "invite");
+    expect(items[inviteIndex]).toMatchObject({ label: "Invite…", icon: "user-plus" });
+    expect(items[inviteIndex + 1]?.id).toBe("copy");
   });
 
   it("disables archive while the thread is running", () => {

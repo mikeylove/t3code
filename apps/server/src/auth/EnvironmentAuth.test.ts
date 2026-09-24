@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { AuthAdministrativeScopes } from "@t3tools/contracts";
+import { AuthAdministrativeScopes, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -68,6 +68,17 @@ const makeBearerRequest = (
     },
   }) as unknown as Parameters<
     EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
+  >[0];
+
+const makeWebSocketTicketRequest = (
+  ticket: string,
+): Parameters<EnvironmentAuth.EnvironmentAuth["Service"]["authenticateWebSocketUpgrade"]>[0] =>
+  ({
+    url: `/ws?wsTicket=${encodeURIComponent(ticket)}`,
+    cookies: {},
+    headers: {},
+  }) as unknown as Parameters<
+    EnvironmentAuth.EnvironmentAuth["Service"]["authenticateWebSocketUpgrade"]
   >[0];
 
 const requestMetadata = {
@@ -497,6 +508,73 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
         "relay:write",
       ]);
       expect(verified.subject).toBe("administrative-bootstrap");
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
+  );
+
+  it.effect("threads a pairing link's thread scope through every session it issues", () =>
+    Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const sessions = yield* SessionStore.SessionStore;
+      const threadId = ThreadId.make("thread-guest-target");
+
+      const scopedLink = yield* serverAuth.issuePairingCredential({ threadId });
+      const plainLink = yield* serverAuth.issuePairingCredential();
+      const listedLinks = yield* serverAuth.listPairingLinks();
+      expect(listedLinks.find((link) => link.id === scopedLink.id)?.threadId).toBe(threadId);
+      expect(listedLinks.find((link) => link.id === plainLink.id)).not.toHaveProperty("threadId");
+
+      // Browser cookie path.
+      const browser = yield* serverAuth.createBrowserSession(
+        scopedLink.credential,
+        requestMetadata,
+      );
+      const browserSession = yield* serverAuth.authenticateHttpRequest(
+        makeCookieRequest(sessions.cookieName, browser.sessionToken),
+      );
+      expect(browserSession.threadId).toBe(threadId);
+      // Clients read their own scope from session state to land in the thread.
+      const sessionState = yield* serverAuth.getSessionState(
+        makeCookieRequest(sessions.cookieName, browser.sessionToken),
+      );
+      expect(sessionState.threadId).toBe(threadId);
+      const browserTicket = yield* sessions.issueWebSocketToken(browserSession.sessionId);
+      const browserUpgrade = yield* serverAuth.authenticateWebSocketUpgrade(
+        makeWebSocketTicketRequest(browserTicket.token),
+      );
+      expect(browserUpgrade.threadId).toBe(threadId);
+
+      // Token exchange path.
+      const scopedExchangeLink = yield* serverAuth.issuePairingCredential({ threadId });
+      const exchanged = yield* serverAuth.exchangeBootstrapCredentialForAccessToken(
+        scopedExchangeLink.credential,
+        undefined,
+        requestMetadata,
+      );
+      const bearerSession = yield* serverAuth.authenticateHttpRequest(
+        makeBearerRequest(exchanged.access_token),
+      );
+      expect(bearerSession.threadId).toBe(threadId);
+
+      // Scopes stay ordinary delegated scopes; the thread is only a restriction.
+      expect(browserSession.scopes).toEqual(
+        listedLinks.find((link) => link.id === scopedLink.id)?.scopes,
+      );
+      expect(bearerSession.scopes).toEqual(browserSession.scopes);
+
+      const plain = yield* serverAuth.createBrowserSession(plainLink.credential, requestMetadata);
+      const plainSession = yield* serverAuth.authenticateHttpRequest(
+        makeCookieRequest(sessions.cookieName, plain.sessionToken),
+      );
+      expect(plainSession).not.toHaveProperty("threadId");
+
+      const clients = yield* serverAuth.listClientSessions(plainSession.sessionId);
+      expect(clients.find((c) => c.sessionId === browserSession.sessionId)?.threadId).toBe(
+        threadId,
+      );
+      expect(clients.find((c) => c.sessionId === bearerSession.sessionId)?.threadId).toBe(threadId);
+      expect(clients.find((c) => c.sessionId === plainSession.sessionId)).not.toHaveProperty(
+        "threadId",
+      );
     }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
   );
 

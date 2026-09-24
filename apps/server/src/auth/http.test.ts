@@ -135,3 +135,68 @@ it.effect("sets the selected browser session cookies through the HTTP route", ()
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.effect("thread guests cannot create pairing links even when they hold access:write", () =>
+  Effect.gen(function* () {
+    const crypto = yield* Crypto.Crypto;
+    const unusedSecretStore = ServerSecretStore.ServerSecretStore.of({
+      get: () => Effect.succeed(Option.none()),
+      set: () => Effect.void,
+      create: () => Effect.void,
+      getOrCreateRandom: () => Effect.die("Not used by these routes."),
+      remove: () => Effect.void,
+    });
+    const requestContext = Context.make(Crypto.Crypto, crypto).pipe(
+      Context.add(ServerSecretStore.ServerSecretStore, unusedSecretStore),
+    );
+    return yield* Effect.acquireUseRelease(
+      Effect.sync(() => HttpRouter.toWebHandler(routesLayer, { disableLogger: true })),
+      (environment) =>
+        Effect.tryPromise(async () => {
+          const devResponse = await environment.handler(
+            postJson("/api/auth/browser-session", { credential: DEV_TOKEN }),
+            requestContext,
+          );
+          expect(devResponse.status).toBe(200);
+          const devCookieHeader =
+            devResponse.headers
+              .getSetCookie()
+              .find((cookie) => cookie.startsWith("t3_dev_session_"))
+              ?.split(";", 1)[0] ?? "";
+
+          const guestLinkResponse = await environment.handler(
+            postJson(
+              "/api/auth/pairing-token",
+              { threadId: "thread-guest-target", scopes: ["orchestration:read", "access:write"] },
+              { cookie: devCookieHeader },
+            ),
+            requestContext,
+          );
+          expect(guestLinkResponse.status).toBe(200);
+          const guestLink = (await guestLinkResponse.json()) as { credential: string };
+
+          const guestResponse = await environment.handler(
+            postJson("/api/auth/browser-session", { credential: guestLink.credential }),
+            requestContext,
+          );
+          expect(guestResponse.status).toBe(200);
+          const guestCookieHeader = guestResponse.headers.getSetCookie()[0]?.split(";", 1)[0] ?? "";
+
+          const delegated = await environment.handler(
+            postJson(
+              "/api/auth/pairing-token",
+              { scopes: ["orchestration:read"] },
+              { cookie: guestCookieHeader },
+            ),
+            requestContext,
+          );
+          expect(delegated.status).toBe(403);
+          expect(await delegated.json()).toMatchObject({
+            code: "insufficient_scope",
+            requiredScope: "access:write",
+          });
+        }),
+      (environment) => Effect.promise(() => environment.dispose()),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

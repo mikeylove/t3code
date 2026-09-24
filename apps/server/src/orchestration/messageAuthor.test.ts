@@ -2,7 +2,11 @@ import { AuthSessionId, type AuthClientSession } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatAuthoredMessageText, resolveMessageAuthor } from "./messageAuthor.ts";
+import {
+  formatAuthoredMessageText,
+  resolveMessageAuthor,
+  shouldNameSpeaker,
+} from "./messageAuthor.ts";
 
 const session = (overrides: Partial<AuthClientSession> = {}): AuthClientSession => ({
   sessionId: AuthSessionId.make("session-1"),
@@ -72,6 +76,24 @@ describe("resolveMessageAuthor", () => {
       ownerName: "mike",
     });
     expect(author).toEqual({ id: "session:session-1", name: "iOS Safari", kind: "human" });
+  });
+});
+
+describe("shouldNameSpeaker", () => {
+  const owner = { id: "owner", name: "Mikey", kind: "human" as const };
+  const clay = { id: "label:clay", name: "Clay", kind: "human" as const };
+
+  it("keeps a solo owner thread untouched", () => {
+    expect(shouldNameSpeaker({ author: owner, hasOtherAuthors: false })).toBe(false);
+    expect(shouldNameSpeaker({ author: undefined, hasOtherAuthors: false })).toBe(false);
+  });
+
+  it("names the owner once someone else has spoken", () => {
+    expect(shouldNameSpeaker({ author: owner, hasOtherAuthors: true })).toBe(true);
+  });
+
+  it("always names a guest, even as the first attributed message in an old thread", () => {
+    expect(shouldNameSpeaker({ author: clay, hasOtherAuthors: false })).toBe(true);
   });
 });
 

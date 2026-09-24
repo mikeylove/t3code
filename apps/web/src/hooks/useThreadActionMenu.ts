@@ -1,4 +1,5 @@
 import { requestCustomSnooze } from "../components/CustomSnoozeDialog";
+import { requestThreadInvite, useCanInviteToThread } from "../components/ThreadInviteDialog";
 import { scopeProjectRef, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   type AtomCommandResult,
@@ -95,6 +96,7 @@ export function useThreadActionMenu(input: {
     reportFailure: false,
   });
   const handleNewThread = useNewThreadHandler();
+  const canInviteToThread = useCanInviteToThread();
   const markThreadUnread = useUiStateStore((s) => s.markThreadUnread);
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
@@ -149,6 +151,7 @@ export function useThreadActionMenu(input: {
           canSnoozeNow: canSnooze(thread, { now: now.toISOString() }),
           isRegeneratingTitle,
           isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
+          canInvite: canInviteToThread(threadRef),
           supports,
           snoozePresets,
         });
@@ -240,6 +243,9 @@ export function useThreadActionMenu(input: {
           case "mark-unread":
             markThreadUnread(scopedThreadKey(threadRef), thread.latestTurn?.completedAt);
             return;
+          case "invite":
+            requestThreadInvite({ threadRef, threadTitle: thread.title });
+            return;
           case "copy-path": {
             const workspacePath = thread.worktreePath ?? projectCwd;
             if (!workspacePath) {
@@ -317,6 +323,7 @@ export function useThreadActionMenu(input: {
     },
     [
       archiveThread,
+      canInviteToThread,
       confirmThreadArchive,
       confirmThreadDelete,
       confirmAndUnpinThread,

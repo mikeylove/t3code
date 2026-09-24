@@ -3,6 +3,7 @@ import {
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
   AuthRelayWriteScope,
+  ORCHESTRATION_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -10,8 +11,11 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   RPC_REQUIRED_SCOPES,
+  RPC_THREAD_GUEST_ACCESS,
+  THREAD_GUEST_COMMAND_TYPES,
   requiredScopeForRpcMethod,
   requiredScopeForDeviceList,
+  threadGuestAccessForRpcMethod,
 } from "./RpcAuthorization.ts";
 
 describe("RPC authorization scopes", () => {
@@ -73,6 +77,63 @@ describe("RPC authorization scopes", () => {
         `RPC method ${method} has no declared authorization scope.`,
       );
     }
+  });
+});
+
+describe("thread guest access", () => {
+  it("decides guest access for every RPC in the server group", () => {
+    expect(new Set(Object.keys(RPC_THREAD_GUEST_ACCESS))).toEqual(
+      new Set(WsRpcGroup.requests.keys()),
+    );
+  });
+
+  it("confines guests to conversation on their own thread", () => {
+    expect(threadGuestAccessForRpcMethod(ORCHESTRATION_WS_METHODS.dispatchCommand)).toBe("thread");
+    expect(threadGuestAccessForRpcMethod(ORCHESTRATION_WS_METHODS.subscribeThread)).toBe("thread");
+    expect(threadGuestAccessForRpcMethod(ORCHESTRATION_WS_METHODS.subscribeShell)).toBe("thread");
+    expect(threadGuestAccessForRpcMethod(WS_METHODS.assetsCreateUrl)).toBe("thread");
+    expect(THREAD_GUEST_COMMAND_TYPES.has("thread.turn.start")).toBe(true);
+    expect(THREAD_GUEST_COMMAND_TYPES.has("thread.approval.respond")).toBe(true);
+    expect(THREAD_GUEST_COMMAND_TYPES.has("thread.archive")).toBe(false);
+    expect(THREAD_GUEST_COMMAND_TYPES.has("thread.delete")).toBe(false);
+    expect(THREAD_GUEST_COMMAND_TYPES.has("thread.runtime-mode.set")).toBe(false);
+  });
+
+  it("denies guests everything that reaches the environment beyond their thread", () => {
+    for (const method of [
+      ORCHESTRATION_WS_METHODS.searchThreads,
+      ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot,
+      WS_METHODS.serverGetSettings,
+      WS_METHODS.projectsReadFile,
+      WS_METHODS.filesystemBrowse,
+      WS_METHODS.terminalOpen,
+      WS_METHODS.subscribeTerminalEvents,
+      WS_METHODS.vcsPull,
+      WS_METHODS.pullRequestsList,
+      WS_METHODS.previewOpen,
+      WS_METHODS.deviceList,
+      WS_METHODS.subscribeAuthAccess,
+    ]) {
+      expect(threadGuestAccessForRpcMethod(method)).toBe("denied");
+    }
+  });
+
+  it("lets guests connect and render with environment-neutral reads only", () => {
+    for (const method of [
+      WS_METHODS.serverProbe,
+      WS_METHODS.serverGetConfig,
+      WS_METHODS.subscribeServerConfig,
+      WS_METHODS.subscribeServerLifecycle,
+      WS_METHODS.serverReportClientActivity,
+    ]) {
+      expect(threadGuestAccessForRpcMethod(method)).toBe("environment");
+    }
+  });
+
+  it("rejects unknown RPC method names", () => {
+    expect(() => threadGuestAccessForRpcMethod("server.notRegistered")).toThrow(
+      "RPC method server.notRegistered has no declared thread guest access.",
+    );
   });
 });
 

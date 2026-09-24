@@ -8,6 +8,7 @@ import {
   type AuthEnvironmentScope,
   type ClientSurface,
   type ServerAuthSessionMethod,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -47,6 +48,7 @@ export interface IssuedSession {
   readonly expiresAt: DateTime.DateTime;
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly proofKeyThumbprint?: string;
+  readonly threadId?: ThreadId;
 }
 
 export interface VerifiedSession {
@@ -58,6 +60,7 @@ export interface VerifiedSession {
   readonly subject: string;
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly proofKeyThumbprint?: string;
+  readonly threadId?: ThreadId;
 }
 
 export type SessionCredentialChange =
@@ -374,6 +377,8 @@ export class SessionStore extends Context.Service<
       readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
       readonly client?: AuthClientMetadata;
       readonly proofKeyThumbprint?: string;
+      /** Restricts the session to one thread (a "thread guest"). */
+      readonly threadId?: ThreadId;
       /**
        * Atomically revoke active sessions with the same subject and method
        * before storing this session.
@@ -513,6 +518,7 @@ export const make = Effect.gen(function* () {
           os: null,
           browser: null,
         },
+        threadId: null,
         issuedAt: yield* DateTime.now,
         expiresAt: REUSABLE_DEV_SESSION_EXPIRES_AT,
       })
@@ -555,6 +561,7 @@ export const make = Effect.gen(function* () {
           scopes: row.value.scopes,
           method: row.value.method,
           client: toClientMetadata(row.value.client),
+          ...(row.value.threadId ? { threadId: row.value.threadId } : {}),
           issuedAt: row.value.issuedAt,
           expiresAt: row.value.expiresAt,
           lastConnectedAt: row.value.lastConnectedAt,
@@ -698,6 +705,7 @@ export const make = Effect.gen(function* () {
           os: client.os ?? null,
           browser: client.browser ?? null,
         },
+        threadId: input?.threadId ?? null,
         issuedAt,
         expiresAt,
       } satisfies AuthSessions.CreateAuthSessionInput;
@@ -726,6 +734,7 @@ export const make = Effect.gen(function* () {
           scopes: claims.scopes,
           method: claims.method,
           client,
+          ...(input?.threadId ? { threadId: input.threadId } : {}),
           issuedAt,
           expiresAt,
           lastConnectedAt: null,
@@ -741,6 +750,7 @@ export const make = Effect.gen(function* () {
         expiresAt: expiresAt,
         scopes: claims.scopes,
         ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
+        ...(input?.threadId ? { threadId: input.threadId } : {}),
       } satisfies IssuedSession;
     },
   );
@@ -781,6 +791,7 @@ export const make = Effect.gen(function* () {
           expiresAt: row.value.expiresAt,
           subject: row.value.subject,
           scopes: row.value.scopes,
+          ...(row.value.threadId ? { threadId: row.value.threadId } : {}),
         } satisfies VerifiedSession;
       }
       const [encodedPayload, signature] = token.split(".");
@@ -839,6 +850,7 @@ export const make = Effect.gen(function* () {
         subject: claims.sub,
         scopes: claims.scopes,
         ...(claims.jkt ? { proofKeyThumbprint: claims.jkt } : {}),
+        ...(row.value.threadId ? { threadId: row.value.threadId } : {}),
       } satisfies VerifiedSession;
     },
   );
@@ -947,6 +959,7 @@ export const make = Effect.gen(function* () {
       expiresAt: row.value.expiresAt,
       subject: row.value.subject,
       scopes: row.value.scopes,
+      ...(row.value.threadId ? { threadId: row.value.threadId } : {}),
     } satisfies VerifiedSession;
   });
 
@@ -966,6 +979,7 @@ export const make = Effect.gen(function* () {
           scopes: row.scopes,
           method: row.method,
           client: toClientMetadata(row.client),
+          ...(row.threadId ? { threadId: row.threadId } : {}),
           issuedAt: row.issuedAt,
           expiresAt: row.expiresAt,
           lastConnectedAt: row.lastConnectedAt,

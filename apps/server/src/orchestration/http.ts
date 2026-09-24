@@ -14,6 +14,7 @@ import {
   failEnvironmentInternal,
   failEnvironmentInvalidRequest,
   failEnvironmentNotFound,
+  failEnvironmentScopeRequired,
   requireEnvironmentScope,
 } from "../auth/http.ts";
 import * as ProjectCloneTracker from "../project/ProjectCloneTracker.ts";
@@ -27,13 +28,26 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
     const orchestrationEngine = yield* OrchestrationEngineService;
     const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
+    // A thread guest holds ordinary scopes but is confined to one thread;
+    // routes that expose the whole environment refuse them outright.
+    const requireFullSessionScope = Effect.fn("environment.orchestration.requireFullSession")(
+      function* (scope: typeof AuthOrchestrationReadScope | typeof AuthOrchestrationOperateScope) {
+        const session = yield* requireEnvironmentScope(scope);
+        if (session.threadId !== undefined) {
+          return yield* failEnvironmentScopeRequired(scope);
+        }
+        return session;
+      },
+    );
 
     return handlers
       .handle(
         "snapshot",
         Effect.fn("environment.orchestration.snapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
-          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          // Whole-environment reads stay with full sessions; a thread guest
+          // reaches their thread through the WebSocket shell and thread streams.
+          yield* requireFullSessionScope(AuthOrchestrationReadScope);
           // Serve the lightweight command read model (thread bodies empty)
           // instead of the fully hydrated snapshot. Hydrating every message
           // and activity payload in the database has OOM-killed servers, and
@@ -52,7 +66,7 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         "shellSnapshot",
         Effect.fn("environment.orchestration.shellSnapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
-          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          yield* requireFullSessionScope(AuthOrchestrationReadScope);
           return yield* projectionSnapshotQuery
             .getShellSnapshot()
             .pipe(
@@ -66,7 +80,10 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         "threadSnapshot",
         Effect.fn("environment.orchestration.threadSnapshot")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
-          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          const session = yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          if (session.threadId !== undefined && session.threadId !== args.params.threadId) {
+            return yield* failEnvironmentNotFound("thread_not_found");
+          }
           const snapshot = yield* projectionSnapshotQuery
             .getThreadDetailSnapshot(
               args.params.threadId,
@@ -97,7 +114,9 @@ export const orchestrationHttpApiLayer = HttpApiBuilder.group(
         "dispatch",
         Effect.fn("environment.orchestration.dispatch")(function* (args) {
           yield* annotateEnvironmentRequest(args.endpoint.name);
-          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          // This route bypasses the WebSocket author stamp and guest command
+          // gate, so guests do not get it at all.
+          yield* requireFullSessionScope(AuthOrchestrationOperateScope);
           yield* ProjectCloneTracker.rejectCommandsDuringClone(
             projectCloneTracker,
             args.payload,

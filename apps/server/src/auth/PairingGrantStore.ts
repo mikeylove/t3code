@@ -4,6 +4,7 @@ import {
   type AuthEnvironmentScope,
   type AuthPairingLink,
   type ServerAuthBootstrapMethod,
+  type ThreadId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
@@ -26,6 +27,7 @@ export interface BootstrapGrant {
   readonly subject: string;
   readonly label?: string;
   readonly proofKeyThumbprint?: string;
+  readonly threadId?: ThreadId;
   readonly expiresAt: DateTime.DateTime;
 }
 
@@ -178,6 +180,7 @@ export interface IssuedBootstrapCredential {
   readonly credential: string;
   readonly label?: string;
   readonly proofKeyThumbprint?: string;
+  readonly threadId?: ThreadId;
   readonly expiresAt: DateTime.Utc;
 }
 
@@ -200,6 +203,7 @@ export class PairingGrantStore extends Context.Service<
       readonly subject?: string;
       readonly label?: string;
       readonly proofKeyThumbprint?: string;
+      readonly threadId?: ThreadId;
       /**
        * "startup" marks the credential the server mints for itself at boot,
        * which gets the long dev TTL when a dev URL is configured.
@@ -334,23 +338,17 @@ export const make = Effect.gen(function* () {
       const now = yield* DateTime.now;
       const rows = yield* pairingLinks.listActive({ now });
 
-      return rows.map((row) =>
-        row.label
-          ? ({
-              id: row.id,
-              scopes: row.scopes,
-              subject: row.subject,
-              label: row.label,
-              createdAt: row.createdAt,
-              expiresAt: row.expiresAt,
-            } satisfies AuthPairingLink)
-          : ({
-              id: row.id,
-              scopes: row.scopes,
-              subject: row.subject,
-              createdAt: row.createdAt,
-              expiresAt: row.expiresAt,
-            } satisfies AuthPairingLink),
+      return rows.map(
+        (row) =>
+          ({
+            id: row.id,
+            scopes: row.scopes,
+            subject: row.subject,
+            ...(row.label ? { label: row.label } : {}),
+            ...(row.threadId ? { threadId: row.threadId } : {}),
+            createdAt: row.createdAt,
+            expiresAt: row.expiresAt,
+          }) satisfies AuthPairingLink,
       );
     },
     Effect.mapError((cause) => new ActivePairingLinksLoadError({ cause })),
@@ -392,6 +390,7 @@ export const make = Effect.gen(function* () {
       credential,
       ...(input?.label ? { label: input.label } : {}),
       ...(input?.proofKeyThumbprint ? { proofKeyThumbprint: input.proofKeyThumbprint } : {}),
+      ...(input?.threadId ? { threadId: input.threadId } : {}),
       expiresAt,
     };
     const subject = input?.subject ?? "one-time-token";
@@ -404,6 +403,7 @@ export const make = Effect.gen(function* () {
         subject,
         label: input?.label ?? null,
         proofKeyThumbprint: input?.proofKeyThumbprint ?? null,
+        threadId: input?.threadId ?? null,
         createdAt: now,
         expiresAt: expiresAt,
       })
@@ -423,6 +423,7 @@ export const make = Effect.gen(function* () {
       scopes: input?.scopes ?? AuthStandardClientScopes,
       subject: input?.subject ?? "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
+      ...(input?.threadId ? { threadId: input.threadId } : {}),
       createdAt: now,
       expiresAt,
     });
@@ -494,6 +495,7 @@ export const make = Effect.gen(function* () {
                 ...(grant.proofKeyThumbprint
                   ? { proofKeyThumbprint: grant.proofKeyThumbprint }
                   : {}),
+                ...(grant.threadId ? { threadId: grant.threadId } : {}),
                 expiresAt: grant.expiresAt,
               } satisfies BootstrapGrant,
             },
@@ -528,6 +530,7 @@ export const make = Effect.gen(function* () {
           ...(consumed.value.proofKeyThumbprint
             ? { proofKeyThumbprint: consumed.value.proofKeyThumbprint }
             : {}),
+          ...(consumed.value.threadId ? { threadId: consumed.value.threadId } : {}),
           expiresAt: consumed.value.expiresAt,
         } satisfies BootstrapGrant;
       }

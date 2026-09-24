@@ -2,7 +2,11 @@ import { AuthOrchestrationReadScope, EnvironmentHttpApi } from "@t3tools/contrac
 import * as Effect from "effect/Effect";
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
-import { annotateEnvironmentRequest, requireEnvironmentScope } from "../auth/http.ts";
+import {
+  annotateEnvironmentRequest,
+  failEnvironmentScopeRequired,
+  requireEnvironmentScope,
+} from "../auth/http.ts";
 import * as PullRequestService from "./PullRequestService.ts";
 
 /** The patch is often the largest PR payload and benefits from HTTP compression and flow control. */
@@ -15,7 +19,11 @@ export const pullRequestHttpApiLayer = HttpApiBuilder.group(
       "diff",
       Effect.fn("environment.pullRequests.diff")(function* (args) {
         yield* annotateEnvironmentRequest(args.endpoint.name);
-        yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+        const session = yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+        // Pull requests are project-wide; a thread guest has no view of them.
+        if (session.threadId !== undefined) {
+          return yield* failEnvironmentScopeRequired(AuthOrchestrationReadScope);
+        }
         return yield* pullRequests.diff(args.payload);
       }),
     );

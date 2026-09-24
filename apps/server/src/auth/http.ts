@@ -403,6 +403,10 @@ export const authHttpApiLayer = HttpApiBuilder.group(
           function* (args) {
             yield* annotateEnvironmentRequest(args.endpoint.name);
             const session = yield* requireEnvironmentScope(AuthAccessWriteScope);
+            // A thread guest never delegates access, whatever scopes it holds.
+            if (session.threadId !== undefined) {
+              return yield* failEnvironmentScopeRequired(AuthAccessWriteScope);
+            }
             const delegatedScopes = args.payload.scopes ?? AuthStandardClientScopes;
             if (
               delegatedScopes.length === 0 ||

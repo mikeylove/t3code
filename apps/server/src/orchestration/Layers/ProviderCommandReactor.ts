@@ -34,7 +34,7 @@ import * as Stream from "effect/Stream";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
-import { formatAuthoredMessageText } from "../messageAuthor.ts";
+import { formatAuthoredMessageText, shouldNameSpeaker } from "../messageAuthor.ts";
 import { increment, orchestrationEventsProcessedTotal } from "../../observability/Metrics.ts";
 import {
   ProviderAdapterProcessError,
@@ -1488,10 +1488,10 @@ const make = Effect.gen(function* () {
       text: message.text,
       records: message.context?.records ?? [],
     });
-    // Only a thread with more than one participant names the speaker; a solo
-    // thread sends exactly what it always has.
+    // Only a shared thread names the speaker; a solo owner thread sends
+    // exactly what it always has.
     const messageText =
-      hasOtherAuthors && message.author !== undefined
+      message.author !== undefined && shouldNameSpeaker({ author: message.author, hasOtherAuthors })
         ? formatAuthoredMessageText({
             text: providerText,
             author: message.author,

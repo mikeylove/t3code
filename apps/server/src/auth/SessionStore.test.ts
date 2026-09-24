@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -728,6 +728,48 @@ it.layer(NodeServices.layer)("SessionStore.layer", (it) => {
 
       yield* sessions.recordClientConnection(issued.sessionId, {});
       expect((yield* readRow)[0]).toEqual({ surface: "mobile", appVersion: "1.3.0" });
+    }).pipe(Effect.provide(Layer.mergeAll(makeSessionStoreLayer(), SqlitePersistenceMemory))),
+  );
+
+  it.effect("persists a thread scope and surfaces it on every verified view", () =>
+    Effect.gen(function* () {
+      const sessions = yield* SessionStore.SessionStore;
+      const sql = yield* SqlClient.SqlClient;
+      const threadId = ThreadId.make("thread-guest-target");
+      const guest = yield* sessions.issue({
+        subject: "one-time-token",
+        method: "browser-session-cookie",
+        threadId,
+      });
+      const regular = yield* sessions.issue({
+        subject: "one-time-token",
+        method: "browser-session-cookie",
+      });
+      const rows = yield* sql<{ readonly sessionId: string; readonly threadId: string | null }>`
+        SELECT session_id AS "sessionId", thread_id AS "threadId"
+        FROM auth_sessions
+        WHERE session_id IN (${guest.sessionId}, ${regular.sessionId})
+      `;
+      const guestWebSocket = yield* sessions.issueWebSocketToken(guest.sessionId);
+      const regularWebSocket = yield* sessions.issueWebSocketToken(regular.sessionId);
+
+      expect(guest.threadId).toBe(threadId);
+      expect(regular).not.toHaveProperty("threadId");
+      expect(rows.find((row) => row.sessionId === guest.sessionId)?.threadId).toBe(threadId);
+      expect(rows.find((row) => row.sessionId === regular.sessionId)?.threadId).toBeNull();
+
+      expect((yield* sessions.verify(guest.token)).threadId).toBe(threadId);
+      expect(yield* sessions.verify(regular.token)).not.toHaveProperty("threadId");
+      expect((yield* sessions.verifyWebSocketToken(guestWebSocket.token)).threadId).toBe(threadId);
+      expect(yield* sessions.verifyWebSocketToken(regularWebSocket.token)).not.toHaveProperty(
+        "threadId",
+      );
+
+      const active = yield* sessions.listActive();
+      expect(active.find((entry) => entry.sessionId === guest.sessionId)?.threadId).toBe(threadId);
+      expect(active.find((entry) => entry.sessionId === regular.sessionId)).not.toHaveProperty(
+        "threadId",
+      );
     }).pipe(Effect.provide(Layer.mergeAll(makeSessionStoreLayer(), SqlitePersistenceMemory))),
   );
 });

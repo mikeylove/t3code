@@ -1,4 +1,8 @@
-import type { AuthClientSession, MessageAuthor } from "@t3tools/contracts";
+import {
+  type AuthClientSession,
+  type MessageAuthor,
+  OWNER_MESSAGE_AUTHOR_ID,
+} from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
@@ -38,7 +42,7 @@ export function resolveMessageAuthor(input: {
   if (OWNER_SUBJECTS.has(session.subject)) {
     const chosen = ownerName?.trim();
     const name = chosen && chosen.length > 0 ? chosen : label && label.length > 0 ? label : "Owner";
-    return { id: "owner", name, kind: "human" };
+    return { id: OWNER_MESSAGE_AUTHOR_ID, name, kind: "human" };
   }
   if (label && label.length > 0) {
     return { id: `label:${label.toLowerCase()}`, name: label, kind: "human" };
@@ -55,9 +59,25 @@ export function resolveMessageAuthor(input: {
 }
 
 /**
+ * Whether the provider should be told who is speaking. True once the thread
+ * holds messages from another author, and always for a guest: the owner is
+ * part of every thread even when their earlier messages carry no author, so a
+ * guest speaking is a shared conversation from their first word. Solo owner
+ * threads send text untouched so existing prompts stay byte-identical.
+ */
+export function shouldNameSpeaker(input: {
+  readonly author: MessageAuthor | undefined;
+  readonly hasOtherAuthors: boolean;
+}): boolean {
+  return (
+    input.author !== undefined &&
+    (input.hasOtherAuthors || input.author.id !== OWNER_MESSAGE_AUTHOR_ID)
+  );
+}
+
+/**
  * Prefix a user message for the provider so the agent can tell participants
- * apart. Applied only once a thread has more than one author; solo threads
- * send the text untouched so existing prompts stay byte-identical.
+ * apart. See shouldNameSpeaker for when it applies.
  */
 export function formatAuthoredMessageText(input: {
   readonly text: string;

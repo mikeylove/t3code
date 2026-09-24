@@ -4216,6 +4216,158 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("confines a thread guest to conversation on the invited thread", () =>
+    Effect.gen(function* () {
+      const otherProjectId = ProjectId.make("project-other");
+      const otherThreadId = ThreadId.make("thread-other");
+      const now = "2026-01-01T00:00:00.000Z";
+      const projectShell = (id: ProjectId, title: string) => ({
+        id,
+        title,
+        workspaceRoot: `/tmp/${id}`,
+        defaultModelSelection,
+        scripts: [],
+        createdAt: now,
+        updatedAt: now,
+      });
+      const dispatched: string[] = [];
+      yield* buildAppUnderTest({
+        layers: {
+          projectionSnapshotQuery: {
+            getShellSnapshot: () =>
+              Effect.succeed({
+                snapshotSequence: 0,
+                projects: [
+                  projectShell(defaultProjectId, "Default Project"),
+                  projectShell(otherProjectId, "Other Project"),
+                ],
+                threads: [
+                  makeDefaultOrchestrationThreadShell(),
+                  makeDefaultOrchestrationThreadShell({
+                    id: otherThreadId,
+                    projectId: otherProjectId,
+                    title: "Other Thread",
+                  }),
+                ],
+                updatedAt: now,
+              }),
+            getThreadShellById: (threadId) =>
+              Effect.succeed(
+                threadId === defaultThreadId
+                  ? Option.some(makeDefaultOrchestrationThreadShell())
+                  : Option.none(),
+              ),
+          },
+          orchestrationEngine: {
+            dispatch: (command) =>
+              Effect.sync(() => {
+                dispatched.push(`${command.type}:${"threadId" in command ? command.threadId : ""}`);
+                return { sequence: 1 };
+              }),
+          },
+        },
+      });
+
+      const ownerCookie = yield* getAuthenticatedSessionCookieHeader();
+      const inviteResponse = yield* HttpClient.post("/api/auth/pairing-token", {
+        headers: { cookie: ownerCookie },
+        body: yield* HttpBody.json({
+          label: "Clay",
+          scopes: [...AuthStandardClientScopes],
+          threadId: defaultThreadId,
+        }),
+      });
+      assert.equal(inviteResponse.status, 200);
+      const invite = (yield* inviteResponse.json) as { id: string; credential: string };
+      const guest = yield* exchangeAccessToken(invite.credential, {
+        scope: AuthStandardClientScopes.join(" "),
+      });
+      assert.equal(guest.response.status, 200);
+      const guestAuthorization = `Bearer ${guest.body.access_token ?? ""}`;
+
+      // Whole-environment HTTP reads are refused; the guest's own thread is not.
+      const shellResponse = yield* HttpClient.get("/api/orchestration/shell", {
+        headers: { authorization: guestAuthorization },
+      });
+      assert.equal(shellResponse.status, 403);
+      const otherThreadResponse = yield* HttpClient.get(
+        `/api/orchestration/threads/${otherThreadId}`,
+        { headers: { authorization: guestAuthorization } },
+      );
+      assert.equal(otherThreadResponse.status, 404);
+
+      const ticketResponse = yield* HttpClient.post("/api/auth/websocket-ticket", {
+        headers: { authorization: guestAuthorization },
+      });
+      const { ticket } = (yield* ticketResponse.json) as { ticket: string };
+      const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?wsTicket=${encodeURIComponent(ticket)}`;
+      const turnStart = (threadId: ThreadId, suffix: string) => ({
+        type: "thread.turn.start" as const,
+        commandId: CommandId.make(`cmd-guest-${suffix}`),
+        threadId,
+        message: {
+          messageId: MessageId.make(`message-guest-${suffix}`),
+          role: "user" as const,
+          text: "hello from the guest",
+          attachments: [],
+        },
+        runtimeMode: "full-access" as const,
+        interactionMode: "default" as const,
+        createdAt: now,
+      });
+
+      yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          Effect.gen(function* () {
+            // Environment-wide reads and other threads are denied outright.
+            const settingsError = yield* Effect.flip(client[WS_METHODS.serverGetSettings]({}));
+            assert.equal(settingsError._tag, "EnvironmentAuthorizationError");
+            const otherThreadError = yield* Effect.flip(
+              client[ORCHESTRATION_WS_METHODS.subscribeThread]({ threadId: otherThreadId }).pipe(
+                Stream.runCollect,
+              ),
+            );
+            assert.equal(otherThreadError._tag, "EnvironmentAuthorizationError");
+
+            // Only conversation commands on the invited thread reach the engine.
+            const archiveError = yield* Effect.flip(
+              client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+                type: "thread.archive",
+                commandId: CommandId.make("cmd-guest-archive"),
+                threadId: defaultThreadId,
+              }),
+            );
+            assert.equal(archiveError._tag, "EnvironmentAuthorizationError");
+            const otherTurnError = yield* Effect.flip(
+              client[ORCHESTRATION_WS_METHODS.dispatchCommand](turnStart(otherThreadId, "other")),
+            );
+            assert.equal(otherTurnError._tag, "EnvironmentAuthorizationError");
+            yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand](
+              turnStart(defaultThreadId, "own"),
+            );
+            assert.deepEqual(dispatched, [`thread.turn.start:${defaultThreadId}`]);
+
+            // The shell shows the invited thread and its project, nothing else.
+            const first = yield* client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(
+              Stream.runHead,
+              Effect.map(Option.getOrThrow),
+            );
+            assert.equal(first.kind, "snapshot");
+            if (first.kind !== "snapshot") return;
+            assert.deepEqual(
+              first.snapshot.threads.map((thread) => thread.id),
+              [defaultThreadId],
+            );
+            assert.deepEqual(
+              first.snapshot.projects.map((project) => project.id),
+              [defaultProjectId],
+            );
+          }),
+        ),
+      );
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("includes CORS headers on remote auth success responses", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();

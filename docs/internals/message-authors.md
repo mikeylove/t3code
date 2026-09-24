@@ -33,11 +33,14 @@ via a nullable `author_json` column on `projection_thread_messages`.
 
 ## What the agent sees
 
-Solo threads send prompts byte-identical to before. When the turn-start query reports that the
-thread contains user messages from another author, the provider reactor prefixes the message with
-`[Name · time]` on its own line before handing it to the provider. Messages persisted before
-authors were recorded never count as another author, so existing threads do not start receiving
-prefixes after an upgrade.
+Solo threads send prompts byte-identical to before. A thread counts as shared once its user
+messages carry more than one author, or as soon as any author other than the owner appears: the
+owner takes part in every thread, so a guest speaking into unattributed history is already a
+conversation between two people. `isSharedThreadConversation` in the contract encodes this so the
+server's prefix and the clients' labels cannot disagree. In a shared thread the provider reactor
+prefixes each message with `[Name · time]` on its own line before handing it to the provider.
+Messages persisted before authors were recorded never count as an author, so existing threads do
+not start receiving prefixes after an upgrade.
 
 ## What clients show
 
@@ -45,11 +48,37 @@ Web and mobile label user bubbles with the author's name only when the thread's 
 carry two or more distinct author ids, computed once per thread by `hasMultipleMessageAuthors`
 in `client-runtime`. Unattributed messages show no label rather than an invented one.
 
+## Thread guests
+
+An invite is a pairing link that names one thread. `AuthCreatePairingCredentialInput.threadId`
+travels onto the pairing link row, the consumed bootstrap grant, the issued session row, and
+finally `AuthenticatedSession.threadId` on the WebSocket connection and the HTTP principal. A
+session carrying it is a **thread guest**. The field is a restriction layered on top of ordinary
+delegated scopes, never a grant: scopes are checked first, exactly as for any session.
+
+Enforcement has one chokepoint and a short list of per-handler gates:
+
+- [`RPC_THREAD_GUEST_ACCESS`][rpc-auth] decides every RPC for guests: `denied`, `environment`
+  (neutral reads a client needs to connect at all), or `thread`. Like the scope table, it is
+  typed against the RPC group, so adding an RPC without choosing is a compile error. The
+  `observe*` wrappers in `ws.ts` fail `denied` methods before the handler runs.
+- `thread` methods gate themselves. `dispatchCommand` accepts only the conversation commands in
+  `THREAD_GUEST_COMMAND_TYPES`, addressed to the guest's thread, and never with a bootstrap.
+  `subscribeThread`, the diff queries, worktree setup, and thread-addressed asset URLs compare the
+  payload's thread id. `subscribeShell` filters the snapshot, catch-up replay, and live stream to
+  the guest's thread and its project.
+- The HTTP orchestration snapshot, shell, and dispatch routes and the pull request diff route
+  refuse guests; the per-thread snapshot route answers only for the invited thread.
+
+What a guest cannot do is deliberately broad: no lifecycle or mode changes, no files, terminals,
+git, previews, devices, settings, other threads, or access management. Loosening any of that is a
+one-line change in the table plus a gate, and should be a conscious one.
+
 ## Not yet built
 
-Sessions are still environment-wide: an invitee sees every project and thread the pairing link's
-scopes allow. A thread-scoped session grant, per-person approval routing, and presence are
-deliberate follow-ups.
+Per-person approval routing (a "voting" gate), presence, guests naming themselves, and surfacing
+"approved by" in the timeline are deliberate follow-ups.
 
+[rpc-auth]: ../../apps/server/src/auth/RpcAuthorization.ts
 [contract]: ../../packages/contracts/src/orchestration.ts
 [resolver]: ../../apps/server/src/orchestration/messageAuthor.ts

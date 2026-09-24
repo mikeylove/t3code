@@ -143,6 +143,25 @@ running is left alone.
 For Antigravity's Google callback on a remote host, see
 [remote sign-in](./providers-antigravity.md#sign-in-from-a-remote-device).
 
+## Invite someone to a thread
+
+You can share one thread with another person without giving them your whole
+environment. Open the thread's menu, from its title in the chat header or by
+right-clicking it in the sidebar, and choose **Invite…**. Enter the name they
+should appear as, then send them the link or let them scan the QR code.
+
+An invited person can read and reply in that thread, answer the agent's
+questions, and approve its requests. They cannot see your other threads,
+projects, files, terminals, or settings. Messages from each participant are
+labeled with their name once a second person joins, and the agent sees who said
+what.
+
+Invites appear under **Settings → Connections** marked as thread invites, and
+their sessions as thread guests. Revoke one there like any other device. On a
+server that only accepts local connections, the link still works from another
+browser on the same machine; enable network access in Connections to share it
+further.
+
 ## Manage or revoke access
 
 On the host, **Settings → Connections** lets authorized administrators create

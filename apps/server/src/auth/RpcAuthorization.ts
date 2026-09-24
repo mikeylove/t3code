@@ -188,3 +188,191 @@ export const requiredScopeForDeviceList = (input: DeviceListInput): AuthEnvironm
   input.retryHostId || input.updateTool
     ? AuthOrchestrationOperateScope
     : AuthOrchestrationReadScope;
+
+/**
+ * What a thread guest (a session paired from a thread invite, carrying
+ * `threadId`) may do with an RPC. Scopes still apply first; this is a
+ * restriction layered on top of them.
+ *
+ * - `denied`: the guest gets an authorization error. The default for anything
+ *   that reaches the filesystem, terminals, git, settings, other threads, or
+ *   the environment as a whole.
+ * - `environment`: environment-neutral and safe as-is; what a client needs to
+ *   connect and render at all.
+ * - `thread`: the handler must confine the call to the guest's thread itself
+ *   (match the payload's thread id, or filter what it returns).
+ *
+ * Adding an RPC without choosing is a type error, the same guarantee the scope
+ * table gives.
+ */
+export type ThreadGuestRpcAccess = "denied" | "environment" | "thread";
+
+export const RPC_THREAD_GUEST_ACCESS = {
+  [ORCHESTRATION_WS_METHODS.dispatchCommand]: "thread",
+  [ORCHESTRATION_WS_METHODS.getWorkflowScript]: "denied",
+  [ORCHESTRATION_WS_METHODS.getTurnDiff]: "thread",
+  [ORCHESTRATION_WS_METHODS.getFullThreadDiff]: "thread",
+  [ORCHESTRATION_WS_METHODS.searchThreads]: "denied",
+  [ORCHESTRATION_WS_METHODS.subscribeShell]: "thread",
+  [ORCHESTRATION_WS_METHODS.getArchivedShellSnapshot]: "denied",
+  [ORCHESTRATION_WS_METHODS.subscribeThread]: "thread",
+  [WS_METHODS.serverProbe]: "environment",
+  [WS_METHODS.serverGetConfig]: "environment",
+  [WS_METHODS.serverRefreshProviders]: "denied",
+  [WS_METHODS.serverUpdateProvider]: "denied",
+  [WS_METHODS.providerAuthStart]: "denied",
+  [WS_METHODS.providerConsumeResetCredit]: "denied",
+  [WS_METHODS.providerAuthComplete]: "denied",
+  [WS_METHODS.providerAuthRespond]: "denied",
+  [WS_METHODS.providerAuthCancel]: "denied",
+  [WS_METHODS.providerAuthLogout]: "denied",
+  [WS_METHODS.providerAuthSubscribe]: "denied",
+  [WS_METHODS.providerInstallStart]: "denied",
+  [WS_METHODS.providerInstallCancel]: "denied",
+  [WS_METHODS.providerInstallSubscribe]: "denied",
+  [WS_METHODS.providerInstallRemove]: "denied",
+  [WS_METHODS.serverUpdateServer]: "denied",
+  [WS_METHODS.serverUpdateServerWithProgress]: "denied",
+  [WS_METHODS.serverCommitDesktopUpdate]: "denied",
+  [WS_METHODS.serverUpsertKeybinding]: "denied",
+  [WS_METHODS.serverRemoveKeybinding]: "denied",
+  [WS_METHODS.serverGetSettings]: "denied",
+  [WS_METHODS.serverUpdateSettings]: "denied",
+  [WS_METHODS.serverDiscoverSourceControl]: "denied",
+  [WS_METHODS.serverGetTraceDiagnostics]: "denied",
+  [WS_METHODS.serverGetProcessDiagnostics]: "denied",
+  [WS_METHODS.serverGetHostResources]: "denied",
+  [WS_METHODS.serverGetProcessResourceHistory]: "denied",
+  [WS_METHODS.serverGetResourceTelemetryHistory]: "denied",
+  [WS_METHODS.serverRetryResourceTelemetry]: "denied",
+  [WS_METHODS.serverGetUsageSummary]: "denied",
+  [WS_METHODS.serverRefreshUsageRates]: "denied",
+  [WS_METHODS.serverSignalProcess]: "denied",
+  [WS_METHODS.serverReportClientActivity]: "environment",
+  [WS_METHODS.serverReportHostPowerState]: "denied",
+  [WS_METHODS.serverGetBackgroundPolicy]: "environment",
+  [WS_METHODS.cloudGetRelayClientStatus]: "denied",
+  [WS_METHODS.cloudInstallRelayClient]: "denied",
+  [WS_METHODS.pullRequestsList]: "denied",
+  [WS_METHODS.pullRequestsListStats]: "denied",
+  [WS_METHODS.pullRequestsSummary]: "denied",
+  [WS_METHODS.pullRequestsRouting]: "denied",
+  [WS_METHODS.pullRequestsRoutingIdentity]: "denied",
+  [WS_METHODS.pullRequestsStack]: "denied",
+  [WS_METHODS.pullRequestsLinkedThreads]: "denied",
+  [WS_METHODS.pullRequestsDetail]: "denied",
+  [WS_METHODS.pullRequestsPreview]: "denied",
+  [WS_METHODS.pullRequestsActivity]: "denied",
+  [WS_METHODS.pullRequestsThreadComments]: "denied",
+  [WS_METHODS.pullRequestsDiffFileContents]: "denied",
+  [WS_METHODS.pullRequestsFilesViewed]: "denied",
+  [WS_METHODS.pullRequestsRunAction]: "denied",
+  [WS_METHODS.pullRequestsUpdate]: "denied",
+  [WS_METHODS.pullRequestsComment]: "denied",
+  [WS_METHODS.pullRequestsUpdateComment]: "denied",
+  [WS_METHODS.pullRequestsSubmitReview]: "denied",
+  [WS_METHODS.pullRequestsReplyToThread]: "denied",
+  [WS_METHODS.pullRequestsSetThreadResolution]: "denied",
+  [WS_METHODS.pullRequestsSetReaction]: "denied",
+  [WS_METHODS.pullRequestsSetFilesViewed]: "denied",
+  [WS_METHODS.pullRequestsInvalidate]: "denied",
+  [WS_METHODS.pullRequestsSubscribeRefreshes]: "denied",
+  [WS_METHODS.pullRequestsReviewerCandidates]: "denied",
+  [WS_METHODS.pullRequestsRequestReviewers]: "denied",
+  [WS_METHODS.pullRequestsLabelCandidates]: "denied",
+  [WS_METHODS.pullRequestsSetLabels]: "denied",
+  [WS_METHODS.sourceControlLookupRepository]: "denied",
+  [WS_METHODS.sourceControlCloneRepository]: "denied",
+  [WS_METHODS.sourceControlPublishRepository]: "denied",
+  [WS_METHODS.projectCloneStart]: "denied",
+  [WS_METHODS.projectCloneCancel]: "denied",
+  [WS_METHODS.projectCloneRetry]: "denied",
+  [WS_METHODS.subscribeProjectClones]: "denied",
+  [WS_METHODS.projectsListEntries]: "denied",
+  [WS_METHODS.projectsReadFile]: "denied",
+  [WS_METHODS.projectsSearchContents]: "denied",
+  [WS_METHODS.projectsSearchEntries]: "denied",
+  [WS_METHODS.projectsWriteFile]: "denied",
+  [WS_METHODS.shellOpenInEditor]: "denied",
+  [WS_METHODS.filesystemBrowse]: "denied",
+  [WS_METHODS.agentSessionsScan]: "denied",
+  [WS_METHODS.agentSessionsImport]: "denied",
+  [WS_METHODS.assetsCreateUrl]: "thread",
+  // An upload is a pending blob addressed by an unguessable id; it only joins
+  // a thread through a dispatched command, which is gated to the guest's own.
+  [WS_METHODS.attachmentsCreateUploadUrl]: "environment",
+  [WS_METHODS.attachmentsDelete]: "environment",
+  [WS_METHODS.providerUploadFeedback]: "denied",
+  [WS_METHODS.subscribeVcsStatus]: "denied",
+  [WS_METHODS.subscribeWorktreeSetup]: "thread",
+  [WS_METHODS.worktreeSetupCancel]: "denied",
+  [WS_METHODS.subscribeResourceTelemetry]: "denied",
+  [WS_METHODS.vcsRefreshStatus]: "denied",
+  [WS_METHODS.vcsPull]: "denied",
+  [WS_METHODS.gitRunStackedAction]: "denied",
+  [WS_METHODS.gitResolvePullRequest]: "denied",
+  [WS_METHODS.gitPreparePullRequestThread]: "denied",
+  [WS_METHODS.vcsListRefs]: "denied",
+  [WS_METHODS.vcsCreateWorktree]: "denied",
+  [WS_METHODS.vcsRemoveWorktree]: "denied",
+  [WS_METHODS.vcsCreateRef]: "denied",
+  [WS_METHODS.vcsSwitchRef]: "denied",
+  [WS_METHODS.vcsInit]: "denied",
+  [WS_METHODS.reviewGetDiffPreview]: "denied",
+  [WS_METHODS.reviewGetDiffFileContents]: "denied",
+  [WS_METHODS.terminalOpen]: "denied",
+  [WS_METHODS.terminalAttach]: "denied",
+  [WS_METHODS.terminalWrite]: "denied",
+  [WS_METHODS.terminalResize]: "denied",
+  [WS_METHODS.terminalClear]: "denied",
+  [WS_METHODS.terminalRestart]: "denied",
+  [WS_METHODS.terminalClose]: "denied",
+  [WS_METHODS.subscribeTerminalEvents]: "denied",
+  [WS_METHODS.subscribeTerminalMetadata]: "denied",
+  [WS_METHODS.previewOpen]: "denied",
+  [WS_METHODS.previewNavigate]: "denied",
+  [WS_METHODS.previewResize]: "denied",
+  [WS_METHODS.previewRefresh]: "denied",
+  [WS_METHODS.previewClose]: "denied",
+  [WS_METHODS.previewList]: "denied",
+  [WS_METHODS.previewReportStatus]: "denied",
+  [WS_METHODS.previewAutomationConnect]: "denied",
+  [WS_METHODS.previewAutomationRespond]: "denied",
+  [WS_METHODS.previewAutomationFocusHost]: "denied",
+  [WS_METHODS.subscribePreviewEvents]: "denied",
+  [WS_METHODS.subscribeDiscoveredLocalServers]: "denied",
+  [WS_METHODS.deviceConfigure]: "denied",
+  [WS_METHODS.deviceTestHost]: "denied",
+  [WS_METHODS.deviceList]: "denied",
+  [WS_METHODS.deviceOpen]: "denied",
+  [WS_METHODS.deviceClose]: "denied",
+  [WS_METHODS.deviceShutdown]: "denied",
+  [WS_METHODS.deviceDetail]: "denied",
+  [WS_METHODS.deviceAction]: "denied",
+  [WS_METHODS.subscribeDeviceState]: "denied",
+  [WS_METHODS.subscribeServerConfig]: "environment",
+  [WS_METHODS.subscribeServerLifecycle]: "environment",
+  [WS_METHODS.subscribeAuthAccess]: "denied",
+  [WS_METHODS.subscribeBackgroundPolicy]: "environment",
+} as const satisfies Readonly<Record<WsRpcMethod, ThreadGuestRpcAccess>>;
+
+export function threadGuestAccessForRpcMethod(method: string): ThreadGuestRpcAccess {
+  if (!Object.hasOwn(RPC_THREAD_GUEST_ACCESS, method)) {
+    throw new Error(`RPC method ${method} has no declared thread guest access.`);
+  }
+  return RPC_THREAD_GUEST_ACCESS[method as WsRpcMethod];
+}
+
+/**
+ * Commands a thread guest may dispatch at their own thread: conversation only.
+ * Anything that changes the thread's lifecycle, mode, history, or worktree
+ * stays with the owner.
+ */
+export const THREAD_GUEST_COMMAND_TYPES: ReadonlySet<string> = new Set([
+  "thread.turn.start",
+  "thread.turn.interrupt",
+  "thread.message.user.append",
+  "thread.approval.respond",
+  "thread.user-input.respond",
+  "thread.user-input.dismiss",
+]);

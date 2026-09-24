@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { ThreadId } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -136,6 +137,26 @@ it.layer(NodeServices.layer)("PairingGrantStore.layer", (it) => {
       expect(missing.message).toContain("proof key mismatch");
       expect(wrong.message).toContain("proof key mismatch");
       expect(consumed.proofKeyThumbprint).toBe("client-proof-key-thumbprint");
+    }).pipe(Effect.provide(makePairingGrantStoreLayer())),
+  );
+
+  it.effect("carries a thread scope from the pairing link into the consumed grant", () =>
+    Effect.gen(function* () {
+      const bootstrapCredentials = yield* PairingGrantStore.PairingGrantStore;
+      const threadId = ThreadId.make("thread-guest-target");
+      const scoped = yield* bootstrapCredentials.issueOneTimeToken({ threadId });
+      const unscoped = yield* bootstrapCredentials.issueOneTimeToken();
+      const listed = yield* bootstrapCredentials.listActive();
+
+      expect(scoped.threadId).toBe(threadId);
+      expect(listed.find((link) => link.id === scoped.id)?.threadId).toBe(threadId);
+      expect(listed.find((link) => link.id === unscoped.id)).not.toHaveProperty("threadId");
+
+      const scopedGrant = yield* bootstrapCredentials.consume(scoped.credential);
+      const unscopedGrant = yield* bootstrapCredentials.consume(unscoped.credential);
+
+      expect(scopedGrant.threadId).toBe(threadId);
+      expect(unscopedGrant).not.toHaveProperty("threadId");
     }).pipe(Effect.provide(makePairingGrantStoreLayer())),
   );
 

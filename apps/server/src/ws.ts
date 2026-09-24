@@ -150,7 +150,12 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import { requiredScopeForRpcMethod, requiredScopeForDeviceList } from "./auth/RpcAuthorization.ts";
+import {
+  requiredScopeForRpcMethod,
+  requiredScopeForDeviceList,
+  THREAD_GUEST_COMMAND_TYPES,
+  threadGuestAccessForRpcMethod,
+} from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
@@ -690,6 +695,29 @@ const makeWsRpcLayer = (
         currentSession.scopes.includes(requiredScope)
           ? stream
           : Stream.fail(authorizationError(requiredScope));
+      // A thread guest is confined to one thread. Methods marked "denied" for
+      // guests fail here, before the handler runs; "thread" methods must gate
+      // themselves with requireGuestThread or filter what they return.
+      const guestThreadId = currentSession.threadId;
+      const guestDeniedError = (method: string) =>
+        new EnvironmentAuthorizationError({
+          message: `A thread guest may not call ${method}.`,
+          requiredScope: requiredScopeForRpcMethod(method),
+        });
+      const isGuestDenied = (method: string) =>
+        guestThreadId !== undefined && threadGuestAccessForRpcMethod(method) === "denied";
+      const requireGuestThread = (
+        method: string,
+        threadId: ThreadId,
+      ): Effect.Effect<void, EnvironmentAuthorizationError> =>
+        guestThreadId !== undefined && threadId !== guestThreadId
+          ? Effect.fail(
+              new EnvironmentAuthorizationError({
+                message: `A thread guest may only use ${method} on their own thread.`,
+                requiredScope: requiredScopeForRpcMethod(method),
+              }),
+            )
+          : Effect.void;
       const observeRpcEffect = <A, E, R>(
         method: string,
         effect: Effect.Effect<A, E, R>,
@@ -697,7 +725,9 @@ const makeWsRpcLayer = (
       ) =>
         instrumentRpcEffect(
           method,
-          authorizeEffect(requiredScopeForRpcMethod(method), effect),
+          isGuestDenied(method)
+            ? Effect.fail(guestDeniedError(method))
+            : authorizeEffect(requiredScopeForRpcMethod(method), effect),
           traceAttributes,
         );
       const observeRpcStream = <A, E, R>(
@@ -707,7 +737,9 @@ const makeWsRpcLayer = (
       ) =>
         instrumentRpcStream(
           method,
-          authorizeStream(requiredScopeForRpcMethod(method), stream),
+          isGuestDenied(method)
+            ? Stream.fail(guestDeniedError(method))
+            : authorizeStream(requiredScopeForRpcMethod(method), stream),
           traceAttributes,
         );
       const observeRpcStreamEffect = <A, StreamError, StreamContext, EffectError, EffectContext>(
@@ -721,7 +753,9 @@ const makeWsRpcLayer = (
       ) =>
         instrumentRpcStreamEffect(
           method,
-          authorizeEffect(requiredScopeForRpcMethod(method), effect),
+          isGuestDenied(method)
+            ? Effect.fail(guestDeniedError(method))
+            : authorizeEffect(requiredScopeForRpcMethod(method), effect),
           traceAttributes,
         );
       const toDispatchCommandError = (cause: unknown, fallbackMessage: string) =>
@@ -1923,6 +1957,24 @@ const makeWsRpcLayer = (
               const normalizedCommand = yield* stampCommandAuthor(
                 yield* normalizeDispatchCommand(command),
               );
+              if (guestThreadId !== undefined) {
+                // A guest converses in their thread and nothing more: no
+                // lifecycle or mode changes, and no bootstrap that would
+                // create threads or worktrees under the same command.
+                const allowed =
+                  THREAD_GUEST_COMMAND_TYPES.has(normalizedCommand.type) &&
+                  "threadId" in normalizedCommand &&
+                  normalizedCommand.threadId === guestThreadId &&
+                  !(normalizedCommand.type === "thread.turn.start" && normalizedCommand.bootstrap);
+                if (!allowed) {
+                  return yield* new EnvironmentAuthorizationError({
+                    message: `A thread guest may not dispatch ${normalizedCommand.type} here.`,
+                    requiredScope: requiredScopeForRpcMethod(
+                      ORCHESTRATION_WS_METHODS.dispatchCommand,
+                    ),
+                  });
+                }
+              }
               // Archive removes the thread from the client, so this transport
               // closes its session and terminals after the command lands.
               // Settlement cleanup is driven by thread.settled events in the
@@ -1994,7 +2046,8 @@ const makeWsRpcLayer = (
               return result;
             }).pipe(
               Effect.mapError((cause) =>
-                isOrchestrationDispatchCommandError(cause)
+                isOrchestrationDispatchCommandError(cause) ||
+                Schema.is(EnvironmentAuthorizationError)(cause)
                   ? cause
                   : new OrchestrationDispatchCommandError({
                       message: "Failed to dispatch orchestration command",
@@ -2013,29 +2066,33 @@ const makeWsRpcLayer = (
         [ORCHESTRATION_WS_METHODS.getTurnDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getTurnDiff,
-            checkpointDiffQuery.getTurnDiff(input).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationGetTurnDiffError({
-                    message: "Failed to load turn diff",
-                    cause,
-                  }),
+            requireGuestThread(ORCHESTRATION_WS_METHODS.getTurnDiff, input.threadId)
+              .pipe(Effect.andThen(checkpointDiffQuery.getTurnDiff(input)))
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationGetTurnDiffError({
+                      message: "Failed to load turn diff",
+                      cause,
+                    }),
+                ),
               ),
-            ),
             { "rpc.aggregate": "orchestration" },
           ),
         [ORCHESTRATION_WS_METHODS.getFullThreadDiff]: (input) =>
           observeRpcEffect(
             ORCHESTRATION_WS_METHODS.getFullThreadDiff,
-            checkpointDiffQuery.getFullThreadDiff(input).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new OrchestrationGetFullThreadDiffError({
-                    message: "Failed to load full thread diff",
-                    cause,
-                  }),
+            requireGuestThread(ORCHESTRATION_WS_METHODS.getFullThreadDiff, input.threadId)
+              .pipe(Effect.andThen(checkpointDiffQuery.getFullThreadDiff(input)))
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new OrchestrationGetFullThreadDiffError({
+                      message: "Failed to load full thread diff",
+                      cause,
+                    }),
+                ),
               ),
-            ),
             { "rpc.aggregate": "orchestration" },
           ),
         [ORCHESTRATION_WS_METHODS.searchThreads]: (input) =>
@@ -2090,8 +2147,33 @@ const makeWsRpcLayer = (
                 Effect.catchTags({ OrchestrationGetSnapshotError: closeLiveBuffer }),
                 Effect.forkScoped,
               );
+              // A thread guest's shell is their thread and its project, nothing
+              // else. Resolve the project once; a thread never changes project.
+              const guestProjectId =
+                guestThreadId === undefined
+                  ? undefined
+                  : yield* projectionSnapshotQuery.getThreadShellById(guestThreadId).pipe(
+                      Effect.map((thread) => Option.getOrNull(thread)?.projectId ?? null),
+                      Effect.mapError(
+                        (cause) =>
+                          new OrchestrationGetSnapshotError({
+                            message: "Failed to resolve the guest thread",
+                            cause,
+                          }),
+                      ),
+                    );
+              const isGuestVisibleAggregate = (
+                aggregateKind: OrchestrationEvent["aggregateKind"],
+                aggregateId: string,
+              ) =>
+                guestThreadId === undefined ||
+                (aggregateKind === "thread" && aggregateId === guestThreadId) ||
+                (aggregateKind === "project" && aggregateId === guestProjectId);
+              const isGuestVisibleEvent = (event: OrchestrationEvent) =>
+                isGuestVisibleAggregate(event.aggregateKind, event.aggregateId);
               yield* Effect.forkScoped(
                 orchestrationEngine.streamDomainEvents.pipe(
+                  Stream.filter(isGuestVisibleEvent),
                   Stream.map(toShellEvent),
                   Stream.runForEach((event) =>
                     liveBudget.retain({ kind: "event" as const, event }, event).pipe(
@@ -2119,6 +2201,19 @@ const makeWsRpcLayer = (
               );
 
               const loadSnapshot = projectionSnapshotQuery.getShellSnapshot().pipe(
+                Effect.map((snapshot) =>
+                  guestThreadId === undefined
+                    ? snapshot
+                    : {
+                        ...snapshot,
+                        projects: snapshot.projects.filter((project) =>
+                          isGuestVisibleAggregate("project", project.id),
+                        ),
+                        threads: snapshot.threads.filter((thread) =>
+                          isGuestVisibleAggregate("thread", thread.id),
+                        ),
+                      },
+                ),
                 Effect.tapError((cause) =>
                   Effect.logError("orchestration shell snapshot load failed", { cause }),
                 ),
@@ -2184,7 +2279,9 @@ const makeWsRpcLayer = (
                   // are already covered by the live subscription, so this bound
                   // cannot chase a moving event-store head or grow the live
                   // buffer indefinitely while waiting for an empty page.
-                  orchestrationEngine.readEvents(afterSequence, replayGap),
+                  orchestrationEngine
+                    .readEvents(afterSequence, replayGap)
+                    .pipe(Stream.filter(isGuestVisibleEvent)),
                 ).pipe(
                   Stream.mapError(
                     (cause) =>
@@ -2229,6 +2326,7 @@ const makeWsRpcLayer = (
           observeRpcStreamEffect(
             ORCHESTRATION_WS_METHODS.subscribeThread,
             Effect.gen(function* () {
+              yield* requireGuestThread(ORCHESTRATION_WS_METHODS.subscribeThread, input.threadId);
               const isThisThreadDetailEvent = (event: OrchestrationEvent) =>
                 event.aggregateKind === "thread" &&
                 event.aggregateId === input.threadId &&
@@ -3228,6 +3326,23 @@ const makeWsRpcLayer = (
             WS_METHODS.assetsCreateUrl,
             Effect.gen(function* () {
               const path = yield* Path.Path;
+              if (guestThreadId !== undefined) {
+                // Attachments are addressed by their own unguessable ids. Every
+                // other resource names a workspace path, so a guest may reach
+                // one only through their own thread, never by absolute path.
+                const guestResourceThreadId =
+                  input.resource._tag === "attachment"
+                    ? guestThreadId
+                    : input.resource._tag === "workspace-file" ||
+                        (input.resource._tag === "media-file" &&
+                          !path.isAbsolute(input.resource.path))
+                      ? input.resource.threadId
+                      : undefined;
+                if (guestResourceThreadId === undefined) {
+                  return yield* guestDeniedError(WS_METHODS.assetsCreateUrl);
+                }
+                yield* requireGuestThread(WS_METHODS.assetsCreateUrl, guestResourceThreadId);
+              }
               // An absolute media path can be linked from a thread on another environment.
               if (
                 input.resource._tag === "attachment" ||
@@ -3320,9 +3435,11 @@ const makeWsRpcLayer = (
             },
           ),
         [WS_METHODS.subscribeWorktreeSetup]: (input) =>
-          observeRpcStream(
+          observeRpcStreamEffect(
             WS_METHODS.subscribeWorktreeSetup,
-            worktreeSetupTracker.stream(input.threadId),
+            requireGuestThread(WS_METHODS.subscribeWorktreeSetup, input.threadId).pipe(
+              Effect.as(worktreeSetupTracker.stream(input.threadId)),
+            ),
             { "rpc.aggregate": "vcs" },
           ),
         [WS_METHODS.worktreeSetupCancel]: (input) =>

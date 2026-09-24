@@ -12,6 +12,7 @@ import {
   type AuthPairingLink,
   type AuthPairingCredentialResult,
   type AuthSessionId,
+  type ThreadId,
   type AuthSessionState,
   type ServerAuthDescriptor,
   type ServerAuthSessionMethod,
@@ -49,6 +50,7 @@ export interface IssuedPairingLink {
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly subject: string;
   readonly label?: string;
+  readonly threadId?: ThreadId;
   readonly createdAt: DateTime.Utc;
   readonly expiresAt: DateTime.Utc;
 }
@@ -70,6 +72,12 @@ export interface AuthenticatedSession {
   readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
   readonly proofKeyThumbprint?: string;
   readonly expiresAt?: DateTime.DateTime;
+  /**
+   * Set when the session was paired from a thread invite. Such a "thread
+   * guest" may only see and act on this one thread; every RPC and HTTP route
+   * enforces it. See RpcAuthorization.ts.
+   */
+  readonly threadId?: ThreadId;
 }
 
 const serverAuthInternalErrorContext = {
@@ -451,6 +459,7 @@ export class EnvironmentAuth extends Context.Service<
       readonly scopes?: ReadonlyArray<AuthEnvironmentScope>;
       readonly subject?: string;
       readonly proofKeyThumbprint?: string;
+      readonly threadId?: ThreadId;
       readonly purpose?: "startup";
     }) => Effect.Effect<IssuedPairingLink, ServerAuthInternalError>;
     readonly issuePairingCredential: (
@@ -631,6 +640,7 @@ export const make = Effect.gen(function* () {
         scopes: session.scopes,
         ...(session.proofKeyThumbprint ? { proofKeyThumbprint: session.proofKeyThumbprint } : {}),
         ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
+        ...(session.threadId ? { threadId: session.threadId } : {}),
       })),
       mapSessionVerificationErrors,
     );
@@ -698,6 +708,7 @@ export const make = Effect.gen(function* () {
             scopes: session.scopes,
             sessionMethod: session.method,
             ...(session.expiresAt ? { expiresAt: DateTime.toUtc(session.expiresAt) } : {}),
+            ...(session.threadId !== undefined ? { threadId: session.threadId } : {}),
           }) satisfies AuthSessionState,
       ),
       Effect.catchIf(isServerAuthCredentialError, () =>
@@ -745,6 +756,7 @@ export const make = Effect.gen(function* () {
             method: "browser-session-cookie",
             subject: grant.subject,
             scopes: grant.scopes,
+            ...(grant.threadId ? { threadId: grant.threadId } : {}),
             client: {
               ...requestMetadata,
               ...(grant.label ? { label: grant.label } : {}),
@@ -772,7 +784,7 @@ export const make = Effect.gen(function* () {
 
   type ResolvedBootstrapGrant = Pick<
     PairingGrantStore.BootstrapGrant,
-    "scopes" | "subject" | "label"
+    "scopes" | "subject" | "label" | "threadId"
   > & {
     readonly method: PairingGrantStore.BootstrapGrant["method"] | "reusable-dev-token";
   };
@@ -815,6 +827,7 @@ export const make = Effect.gen(function* () {
                 method: input?.proofKeyThumbprint ? "dpop-access-token" : "bearer-access-token",
                 subject: grant.subject,
                 scopes: grantedScopes,
+                ...(grant.threadId ? { threadId: grant.threadId } : {}),
                 ...(input?.proofKeyThumbprint
                   ? {
                       proofKeyThumbprint: input.proofKeyThumbprint,
@@ -862,12 +875,14 @@ export const make = Effect.gen(function* () {
     readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
     readonly subject: string;
     readonly label?: string;
+    readonly threadId?: ThreadId;
     readonly purpose?: "startup";
   }) =>
     createPairingLink({
       scopes: input.scopes,
       subject: input.subject,
       ...(input.label ? { label: input.label } : {}),
+      ...(input.threadId ? { threadId: input.threadId } : {}),
       ...(input.purpose ? { purpose: input.purpose } : {}),
     }).pipe(
       Effect.map(
@@ -892,6 +907,7 @@ export const make = Effect.gen(function* () {
         ...(input?.ttl ? { ttl: input.ttl } : {}),
         ...(input?.label ? { label: input.label } : {}),
         ...(input?.proofKeyThumbprint ? { proofKeyThumbprint: input.proofKeyThumbprint } : {}),
+        ...(input?.threadId ? { threadId: input.threadId } : {}),
         ...(input?.purpose ? { purpose: input.purpose } : {}),
       });
       return {
@@ -900,6 +916,7 @@ export const make = Effect.gen(function* () {
         scopes: input?.scopes ?? AuthStandardClientScopes,
         subject: input?.subject ?? "one-time-token",
         ...(issued.label ? { label: issued.label } : {}),
+        ...(issued.threadId ? { threadId: issued.threadId } : {}),
         createdAt: DateTime.toUtc(createdAt),
         expiresAt: DateTime.toUtc(issued.expiresAt),
       } satisfies IssuedPairingLink;
@@ -984,6 +1001,7 @@ export const make = Effect.gen(function* () {
       scopes: input?.scopes ?? AuthStandardClientScopes,
       subject: "one-time-token",
       ...(input?.label ? { label: input.label } : {}),
+      ...(input?.threadId ? { threadId: input.threadId } : {}),
     }).pipe(Effect.withSpan("EnvironmentAuth.issuePairingCredential"));
 
   const issueStartupPairingCredential: EnvironmentAuth["Service"]["issueStartupPairingCredential"] =
@@ -1085,6 +1103,7 @@ export const make = Effect.gen(function* () {
               method: session.method,
               scopes: session.scopes,
               ...(session.expiresAt ? { expiresAt: session.expiresAt } : {}),
+              ...(session.threadId ? { threadId: session.threadId } : {}),
             })),
             mapSessionVerificationErrors,
           );

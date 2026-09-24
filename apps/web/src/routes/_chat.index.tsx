@@ -1,6 +1,6 @@
 import { RefreshIcon } from "~/components/ui/refresh-icon";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { LinkIcon, PlusIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
@@ -18,7 +18,9 @@ import {
   useProjects,
   useThreadShells,
 } from "../state/entities";
-import { useEnvironments } from "../state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
+import { buildThreadRouteParams } from "../threadRoutes";
+import { usePrimarySessionState } from "~/environments/primary";
 import { APP_DISPLAY_NAME } from "~/branding";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 
@@ -31,6 +33,41 @@ function ChatIndexRouteView() {
     if (environments.length === 0) return <HostedStaticOnboardingState />;
   }
 
+  return <GuestOrDraftLanding />;
+}
+
+/**
+ * A thread guest has exactly one thread and cannot start another, so landing
+ * here means "take me to it". Everyone else gets the draft landing below.
+ */
+function GuestOrDraftLanding() {
+  const session = usePrimarySessionState();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const guestThreadId = session.data?.threadId ?? null;
+  // The cached session may predate pairing (unauthenticated, no thread), so
+  // ask again once; the answer decides whether this is a guest landing.
+  const { isPending: sessionPending, refresh: refreshSession } = session;
+  const sessionKnown =
+    session.data?.authenticated === true ||
+    session.error !== null ||
+    (session.data === null && !sessionPending);
+
+  useEffect(() => {
+    if (!sessionKnown && !sessionPending) refreshSession();
+  }, [sessionKnown, sessionPending, refreshSession]);
+
+  // Starting a draft before the session is known could race a guest redirect
+  // with a thread creation the server would refuse anyway.
+  if (!sessionKnown) return null;
+  if (guestThreadId !== null) {
+    return primaryEnvironmentId === null ? null : (
+      <Navigate
+        to="/$environmentId/$threadId"
+        params={buildThreadRouteParams(scopeThreadRef(primaryEnvironmentId, guestThreadId))}
+        replace
+      />
+    );
+  }
   return <IndexDraftLanding />;
 }
 
